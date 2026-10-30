@@ -47,6 +47,7 @@ def region_zctas(rel_county: pd.DataFrame) -> pd.DataFrame:
     zland = r.groupby("GEOID_ZCTA5_20").AREALAND_ZCTA5_20.first()
     ins = r[r.GEOID_COUNTY_20.isin(REGION_GEOIDS)]
     part = ins.groupby("GEOID_ZCTA5_20").AREALAND_PART.sum()
+    zland = zland.where(zland > 0)  # zero ZCTA land -> NaN, not inf
     out = pd.DataFrame({"land_share": part / zland.reindex(part.index)})
     out = out[out.land_share > 0]
     ins = ins[ins.AREALAND_PART > 0]
@@ -87,7 +88,10 @@ def out_of_region_2020(rel_tract: pd.DataFrame, blocks_pop: pd.DataFrame, zctas=
 
 
 def inreg_share20(rel_tract: pd.DataFrame, blocks_pop: pd.DataFrame, zpop: pd.Series) -> pd.Series:
-    """total_inregion / (total_inregion + out_of_region_2020), indexed like ``zpop``."""
+    """total_inregion / (total_inregion + out_of_region_2020), indexed like ``zpop``.
+
+    NaN where the ZCTA has zero 2020 population both in and out of the region (77341).
+    """
     out, _ = out_of_region_2020(rel_tract, blocks_pop, zpop.index)
     outside = out.reindex(zpop.index).fillna(0.0)
     return zpop / (zpop + outside)

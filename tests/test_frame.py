@@ -2,8 +2,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from hfb import crosswalk, frame
+from hfb import frame
+from hfb.crosswalk import zcta_pop
 from hfb.config import COUNTIES
+from hfb.paths import raw_path
 
 
 def rel_county(rows):
@@ -32,6 +34,13 @@ def test_region_zctas_land_share_and_county_main():
     assert z.loc["77001", "county_main"] == "48157"
     assert z.loc["77002", "land_share"] == pytest.approx(1.0)
     assert z.loc["77002", "county_main"] == "48201"
+
+
+def test_region_zctas_zero_zcta_land_is_dropped_not_inf():
+    rc = rel_county([("77001", 0, "48201", 5), ("77002", 100, "48201", 100)])
+    z = frame.region_zctas(rc)
+    assert z.index.tolist() == ["77002"]
+    assert np.isfinite(z.land_share).all()
 
 
 def test_region_zctas_county_main_ignores_larger_out_of_region_county():
@@ -101,27 +110,39 @@ def test_read_rel_skips_blank_zcta_and_bom(tmp_path):
 
 @pytest.fixture(scope="module")
 def region(raw):
-    return frame.region_zctas(frame.read_rel(crosswalk._path(raw, "zcta_county")))
+    return frame.region_zctas(frame.read_rel(raw_path(raw, "zcta_county")))
 
 
 @pytest.fixture(scope="module")
 def inreg(raw, blocks, region):
-    rt = frame.read_rel(crosswalk._path(raw, "zcta_tract"))
+    rt = frame.read_rel(raw_path(raw, "zcta_tract"))
     bp = frame.read_blocks_pop(raw)
-    return frame.inreg_share20(rt, bp, crosswalk.zcta_pop(blocks).total)
+    return frame.inreg_share20(rt, bp, zcta_pop(blocks).total)
 
 
 @pytest.mark.real
 def test_region_has_240_zctas(region):
     assert len(region) == 240
+    assert region.land_share.max() <= 1 + 1e-12
 
 
 @pytest.mark.real
 def test_all_region_zctas_in_b05003(raw, region):
     from hfb import acs
 
-    a = acs.read_acs(crosswalk._path(raw, "acs_b05003"), region.index)
+    a = acs.read_acs(raw_path(raw, "acs_b05003"), region.index)
+    assert a.index.is_unique
     assert set(region.index) <= set(a.index)
+    c = acs.cvap(a.loc[region.index])
+    assert not c.isna().any().any()
+    assert (c.acs_vap <= c.acs_pop).all()
+
+
+@pytest.mark.real
+def test_out_of_region_stats_clean_for_region_zctas(raw, blocks, region):
+    rt = frame.read_rel(raw_path(raw, "zcta_tract"))
+    _, stats = frame.out_of_region_2020(rt, frame.read_blocks_pop(raw), region.index)
+    assert stats == {"non_texas_tracts": 0, "missing_tracts": 0}
 
 
 @pytest.mark.real
@@ -135,4 +156,7 @@ def test_inreg_share20_known(inreg, zcta, expected):
 def test_whole_zctas_share_near_one(region, inreg):
     whole = region.index[region.land_share >= 0.999]
     assert len(whole) > 0
-    assert inreg.reindex(whole).min() >= 0.99
+    share = inreg.reindex(whole)
+    # 77341 has zero 2020 population in and out of the region, so its share is 0/0.
+    assert set(share.index[share.isna()]) == {"77341"}
+    assert share.dropna().min() >= 0.99

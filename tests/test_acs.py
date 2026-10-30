@@ -32,6 +32,12 @@ def test_read_acs_filters_zctas_and_flags_sentinels(tmp_path):
     assert np.isnan(a.loc["77001", "B05003_M009"])
     assert np.isnan(a.loc["77002", "B05003_E009"])
     assert a.loc["77001", "B05003_E009"] == 0  # zero stays zero
+    # the sentinels flow through cvap(): an MOE sentinel voids cvap_moe, an estimate
+    # sentinel voids cvap but not the other outputs
+    c = acs.cvap(a)
+    assert np.isnan(c.loc["77001", "cvap_moe"]) and c.loc["77001", "cvap"] == 0
+    assert np.isnan(c.loc["77002", "cvap"]) and c.loc["77002", "acs_vap"] == 0
+    assert c.loc["77002", "acs_pop"] == 2000
 
 
 def test_cvap_formula():
@@ -60,3 +66,11 @@ def test_cvap_nan_propagates():
     out = acs.cvap(b)
     assert np.isnan(out.loc["A", "cvap_moe"])
     assert out.loc["A", "cvap"] == 4
+
+
+def test_cvap_nan_estimate_gives_nan_cvap():
+    b = pd.DataFrame({c: [1.0] for c in COLS}, index=pd.Index(["A"], name="ZCTA"))
+    b["B05003_E009"] = np.nan
+    out = acs.cvap(b)
+    assert np.isnan(out.loc["A", "cvap"])
+    assert out.loc["A", "acs_vap"] == 2
