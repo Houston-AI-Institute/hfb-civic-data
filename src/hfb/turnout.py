@@ -13,6 +13,7 @@ import pandas as pd
 from .crosswalk import NONE
 
 SPLIT_LOW, SPLIT_HIGH = 0.10, 0.90
+SHARE_TOL = 1e-9
 
 
 def load_vd(path) -> pd.DataFrame:
@@ -37,12 +38,19 @@ def _check(weights: pd.DataFrame, vd: pd.DataFrame) -> pd.DataFrame:
     if missing:
         raise ValueError(f"{len(missing)} region VTDKEYs missing from vd: {missing[:10]}")
     v = vd[vd.VTDKEY.isin(region)]
-    share_sum = weights.groupby("VTDKEY").share.sum()
-    bad = v[(v.Voter_Registration > 0) & (v.VTDKEY.map(share_sum) <= 0)]
-    if len(bad):
+    nan = v[v.Voter_Registration.isna() | v.Turnout.isna()]
+    if len(nan):
         raise ValueError(
-            f"{len(bad)} VTDs have registrations but no positive share: "
-            f"{sorted(bad.VTDKEY)[:10]}")
+            f"{len(nan)} region VTDs have NaN Voter_Registration or Turnout: "
+            f"{sorted(nan.VTDKEY)[:10]}")
+    share_sum = v.VTDKEY.map(weights.groupby("VTDKEY").share.sum())
+    has_votes = (v.Voter_Registration > 0) | (v.Turnout > 0)
+    bad = v[has_votes & ((share_sum - 1).abs() > SHARE_TOL)]
+    if len(bad):
+        sums = share_sum[bad.index].round(6).tolist()[:10]
+        raise ValueError(
+            f"{len(bad)} VTDs with registrations or turnout have shares not summing to 1 "
+            f"(no positive share, or incomplete): {sorted(bad.VTDKEY)[:10]}, sums {sums}")
     return v
 
 
@@ -59,7 +67,8 @@ def allocate(weights: pd.DataFrame, vd: pd.DataFrame, yy: int) -> pd.DataFrame:
     """ZCTA -> reg{yy}, to{yy}, including a ``NONE`` row (zero if no block falls outside).
 
     Raises ``ValueError`` naming the key if a weights VTD is absent from ``vd`` or a VTD
-    with registrations has no positive share. Rows of ``vd`` outside the weights are ignored.
+    with registrations or turnout has shares not summing to 1 (including no positive share),
+    or a region VTD has NaN registration or turnout. Rows of ``vd`` outside the weights are ignored.
     """
     cols = [f"reg{yy}", f"to{yy}"]
     out = pieces(weights, vd, yy).groupby("ZCTA")[cols].sum()

@@ -1,9 +1,12 @@
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
 from hfb import turnout
 from hfb.config import COUNTIES
 
+GOLDEN = Path(__file__).parent / "golden"
 TARGETS = {
     24: (3_740_459, 2_239_980),
     22: (3_535_245, 1_564_982),
@@ -81,6 +84,36 @@ def test_no_surname_columns(tmp_path):
     assert vd.VTDKEY.dtype.kind == "i"
 
 
+def test_duplicate_vtdkey_in_vd_raises():
+    weights = w_df([(1, "77001", 1.0)])
+    vd = vd_df([(1, "0010001", 10, 5), (1, "0010001", 10, 5)])
+    with pytest.raises(ValueError, match="duplicated.*1"):
+        turnout.allocate(weights, vd, 24)
+
+
+@pytest.mark.parametrize("col", ["Voter_Registration", "Turnout"])
+def test_nan_input_raises(col):
+    weights = w_df([(1, "77001", 1.0), (8, "77001", 1.0)])
+    vd = vd_df([(1, "0010001", 10, 5), (8, "0010008", 40, 20)])
+    vd.loc[vd.VTDKEY == 8, col] = float("nan")
+    with pytest.raises(ValueError, match=r"NaN.*8"):
+        turnout.allocate(weights, vd, 24)
+
+
+def test_turnout_without_registration_and_zero_share_raises():
+    weights = w_df([(1, "77001", 1.0), (9, "77001", 0.0)])
+    vd = vd_df([(1, "0010001", 10, 5), (9, "0010009", 0, 12)])
+    with pytest.raises(ValueError, match="9"):
+        turnout.allocate(weights, vd, 24)
+
+
+def test_shares_not_summing_to_one_raise():
+    weights = w_df([(1, "77001", 1.0), (6, "77001", 0.5), (6, "77002", 0.3)])
+    vd = vd_df([(1, "0010001", 10, 5), (6, "0010006", 100, 60)])
+    with pytest.raises(ValueError, match=r"6.*0\.8"):
+        turnout.allocate(weights, vd, 24)
+
+
 def test_split_exposure_hand_built():
     # ZCTA A: pieces 0.05 (reg 5) ; 0.10 (reg 10) ; 0.90 (reg 90 of VTD 3) ; 1.0 (VTD 4, reg 100)
     # exposed share in [0.10, 0.90] inclusive: VTD2 piece + VTD3 piece = 10 + 90 = 100
@@ -156,3 +189,15 @@ def test_real_split_exposure_valid(weights, vds):
     s = turnout.split_exposure(weights, vds[24])
     assert "NONE" not in s.index
     assert s.between(0, 1).all()
+
+
+@pytest.mark.real
+@pytest.mark.parametrize("yy", [22, 24])
+def test_allocation_matches_golden_z(allocs, yy):
+    z = pd.read_csv(GOLDEN / "z.csv", dtype={"ZCTA": str}, usecols=["ZCTA", f"reg{yy}", f"to{yy}"])
+    z = z.set_index("ZCTA")
+    a = allocs[yy]
+    a = a[a.index != "NONE"]
+    assert set(a.index) == set(z.index)
+    z = z.reindex(a.index)
+    assert (a[[f"reg{yy}", f"to{yy}"]] - z).abs().to_numpy().max() < 1e-6
