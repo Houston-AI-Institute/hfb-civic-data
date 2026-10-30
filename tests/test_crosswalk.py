@@ -82,6 +82,15 @@ def test_multi_zcta_block_raises():
         crosswalk.zcta_from_faces(pd.Series(["77001|77002"]))
 
 
+def test_block_missing_from_join_source_raises():
+    blocks = pd.DataFrame({"GEOID20": ["a", "b"]})
+    other = pd.DataFrame({"GEOID20": ["a"], "total": [1]})
+    with pytest.raises(ValueError, match=r"1 blocks have no row in Blocks_Pop.*'b'"):
+        crosswalk._join_complete(blocks, other, "Blocks_Pop")
+    ok = crosswalk._join_complete(blocks.iloc[:1], other, "Blocks_Pop")
+    assert ok.total.tolist() == [1]
+
+
 def test_zcta_pop_excludes_none():
     b = blocks_df([(1, "77001", 100, 10, 1), (1, "77001", 50, 0, 1), (1, "NONE", 9, 0, 1)])
     z = crosswalk.zcta_pop(b)
@@ -121,10 +130,13 @@ def test_blocks_match_golden(built, raw):
     shared = ["GEOID20", "VTDKEY", "ZCTA", "total", "vap", "corr_adult", "college", "ALAND20"]
     a = blocks.sort_values("GEOID20").reset_index(drop=True)[shared]
     b = g.sort_values("GEOID20").reset_index(drop=True)[shared]
-    pd.testing.assert_frame_equal(a, b, check_dtype=False)
+    pd.testing.assert_frame_equal(a, b, check_exact=True)
     assert blocks.VTDKEY.dtype.kind == "i"
     assert not blocks.ZCTA.str.contains(r"\|").any()
-    assert "gq" in blocks.columns and blocks.gq.sum() > 0
+    # gq (PL index 5) is new, so golden cannot check it: bound it by its own components
+    # (so a wrong split index fails) and pin the region total (measured 93,854).
+    assert (blocks.gq >= blocks.corr_adult + blocks.college).all()
+    assert blocks.gq.sum() == 93854
     print(f"\nbuild_blocks seconds: {secs:.1f}")
 
 

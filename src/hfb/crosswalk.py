@@ -83,6 +83,16 @@ def _read_gq(raw: Path) -> pd.DataFrame:
     return g.astype({"gq": int, "corr_adult": int, "college": int})
 
 
+def _join_complete(blocks: pd.DataFrame, other: pd.DataFrame, name: str) -> pd.DataFrame:
+    """Left-merge ``other`` on GEOID20; raise if any block has no row in it."""
+    miss = ~blocks.GEOID20.isin(other.GEOID20)
+    if miss.any():
+        raise ValueError(
+            f"{int(miss.sum())} blocks have no row in {name} "
+            f"(first: {blocks.GEOID20[miss].head(5).tolist()})")
+    return blocks.merge(other, on="GEOID20", how="left")
+
+
 def build_blocks(raw: Path, write: bool = True) -> pd.DataFrame:
     """Block table for the region; written to ``<raw>/../interim/blocks.parquet``."""
     raw = Path(raw)
@@ -110,9 +120,10 @@ def build_blocks(raw: Path, write: bool = True) -> pd.DataFrame:
         j["ZCTA"] = zcta_from_faces(j.GEOID20.map(fz))
         parts.append(pd.DataFrame(j.drop(columns="geometry")))
     b = pd.concat(parts, ignore_index=True)
-    b = b.merge(pop, on="GEOID20", how="left").merge(gq, on="GEOID20", how="left")
+    b = _join_complete(b, pop, "Blocks_Pop")
+    b = _join_complete(b, gq, "PL segment 3")
     for col in ["total", "vap", "gq", "corr_adult", "college"]:
-        b[col] = b[col].fillna(0).astype(int)
+        b[col] = b[col].astype(int)
     missing = b.VTDKEY.isna()
     if missing.any():
         raise ValueError(
