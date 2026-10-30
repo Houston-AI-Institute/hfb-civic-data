@@ -3,8 +3,8 @@
 Usage: python -m hfb.build RAW_DIR [--seed SEED_ROOT] [--out DIR] [--qa DIR]
 
 With --seed, sources are copied from the seed root with no network access. Without
-it, every source is downloaded. assemble writes the CSV, XLSX, QA report, PNG map and
-GeoJSON. Exits non-zero if a fetch fails or any QA check fails.
+it, every source is downloaded. assemble writes the CSV, XLSX, county CSV, QA report, PNG
+map and GeoJSON. Exits non-zero if a fetch fails or any QA check fails.
 """
 
 import argparse

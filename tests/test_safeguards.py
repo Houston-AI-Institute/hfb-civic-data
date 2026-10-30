@@ -27,7 +27,8 @@ def test_constants_are_the_briefed_lists():
     assert sg.BANNED_WORDS == (
         "disengaged", "civic desert", "underperforming", "Houston Food Bank", "HFB")
     assert set(sg.ALLOWED_OUT) == {
-        "zcta_civic.csv", "zcta_civic.xlsx", "zcta_p1_map.png", "zcta_civic.geojson"}
+        "zcta_civic.csv", "zcta_civic.xlsx", "zcta_p1_map.png", "zcta_civic.geojson",
+        "county_civic.csv"}
 
 
 @pytest.mark.parametrize("cols", [["ZCTA", "P1"], []])
@@ -68,6 +69,7 @@ def test_out_dir_allowlist(tmp_path):
     assert sg.check_out_dir(tmp_path) == []
     (tmp_path / "zcta_civic.csv").write_text("x")
     (tmp_path / "zcta_p1_map.png").write_text("x")
+    (tmp_path / "county_civic.csv").write_text("x")
     assert sg.check_out_dir(tmp_path) == []
     (tmp_path / "blocks.parquet").write_text("x")
     (tmp_path / "zcta_county.csv").write_text("x")

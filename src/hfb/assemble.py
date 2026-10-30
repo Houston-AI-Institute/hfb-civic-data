@@ -1,8 +1,10 @@
 """Write the hand-off files (CSV, XLSX, map PNG, GeoJSON) and the internal QA report.
 
 ``python -m hfb.assemble data/raw`` builds the 240-row table, writes ``out/zcta_civic.csv``,
-``out/zcta_civic.xlsx``, ``out/zcta_p1_map.png`` and ``out/zcta_civic.geojson``, runs the output safeguards, and writes ``qa/qa_report.md``. Outputs
-are written even when a QA check fails; the command then exits non-zero.
+``out/zcta_civic.xlsx`` (sheets ``data``, ``county``, ``read_me``), ``out/county_civic.csv``,
+``out/zcta_p1_map.png`` and ``out/zcta_civic.geojson``, runs the output safeguards, and writes
+``qa/qa_report.md``. Outputs are written even when a QA check fails; the command then exits
+non-zero.
 """
 
 import argparse
@@ -19,7 +21,7 @@ import openpyxl
 import pandas as pd
 from openpyxl.styles import Alignment, Font, PatternFill
 
-from . import context, crosswalk, flags, pipeline, safeguards, score, turnout
+from . import context, county, crosswalk, flags, pipeline, safeguards, score, turnout
 from .config import COUNTIES
 from .copy import CREDITS, MISUSE, P1_FOOTNOTE, RANK_DIRECTION, REQUIRED_LINES, USE_LIMIT
 from .paths import raw_path
@@ -192,7 +194,7 @@ def _cell(v):
     return v
 
 
-def _read_me_rows() -> list[tuple]:
+def _read_me_rows(with_county: bool = False) -> list[tuple]:
     rows = [("Use statement", MISUSE), ("Use limit", USE_LIMIT)]
     rows += [("Required line", s) for s in REQUIRED_LINES]
     rows += [("Rank direction", RANK_DIRECTION), ("P1", P1_FOOTNOTE)]
@@ -205,11 +207,41 @@ def _read_me_rows() -> list[tuple]:
                         "organizations. ZCTA-level counts are not suppressed below 50, so read "
                         "small counts with care."),
              ("", ""), ("Column", "Definition")]
-    return rows + [(c, COLUMN_DEFS[c]) for c in COLUMNS]
+    rows += [(c, COLUMN_DEFS[c]) for c in COLUMNS]
+    if with_county:
+        rows += [("", ""), ("County table", county.COUNTY_NOTE), ("Column", "Definition")]
+        rows += [(c, county.COLUMN_DEFS[c]) for c in county.COLUMNS]
+    return rows
 
 
-def write_xlsx(t: pd.DataFrame, path) -> None:
-    """Sheet ``data`` (MISUSE in row 1, header row 2, NOT_RANKED rows filled grey) and ``read_me``."""
+def write_county_csv(c: pd.DataFrame, path) -> None:
+    """Row 1 = MISUSE as one fully quoted field, row 2 = header, then the 10 county rows."""
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        csv.writer(fh, quoting=csv.QUOTE_ALL, lineterminator="\n").writerow([MISUSE])
+        c.to_csv(fh, index=False, lineterminator="\n")
+
+
+def _county_sheet(wb, c: pd.DataFrame) -> None:
+    """Sheet ``county``: MISUSE in A1, header row 2, text FIPS and name, same styling as ``data``."""
+    ws = wb.create_sheet(county.SHEET)
+    ws.append([MISUSE])
+    ws.append(list(c.columns))
+    for rec in c.itertuples(index=False):
+        ws.append([_cell(v) for v in rec])
+        for cell in ws[ws.max_row][:len(county.TEXT_COLS)]:
+            cell.number_format = "@"
+    ws["A1"].font = Font(bold=True)
+    for cell in ws[2]:
+        cell.font = Font(bold=True)
+    ws.freeze_panes = "A3"
+    ws.auto_filter.ref = f"A2:{ws.cell(2, len(c.columns)).column_letter}{ws.max_row}"
+    for i, name in enumerate(c.columns, 1):
+        ws.column_dimensions[ws.cell(2, i).column_letter].width = max(11, min(len(name) + 3, 24))
+
+
+def write_xlsx(t: pd.DataFrame, path, county_table: pd.DataFrame | None = None) -> None:
+    """Sheets ``data`` (MISUSE in row 1, header row 2, NOT_RANKED rows filled grey), ``county``
+    (when ``county_table`` is given) and ``read_me``."""
     f = format_table(t)
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -234,8 +266,11 @@ def write_xlsx(t: pd.DataFrame, path) -> None:
     for i, name in enumerate(COLUMNS, 1):
         ws.column_dimensions[ws.cell(2, i).column_letter].width = max(11, min(len(name) + 3, 24))
 
+    if county_table is not None:
+        _county_sheet(wb, county_table)
+
     rm = wb.create_sheet("read_me")
-    for a, b in _read_me_rows():
+    for a, b in _read_me_rows(with_county=county_table is not None):
         rm.append([a or None, b or None])
     rm.column_dimensions["A"].width = 18
     rm.column_dimensions["B"].width = 120
@@ -245,11 +280,13 @@ def write_xlsx(t: pd.DataFrame, path) -> None:
     wb.save(path)
 
 
-def write_outputs(t: pd.DataFrame, out_dir) -> None:
+def write_outputs(t: pd.DataFrame, out_dir, county_table: pd.DataFrame | None = None) -> None:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     write_csv(t, out / safeguards.CSV_NAME)
-    write_xlsx(t, out / safeguards.XLSX_NAME)
+    write_xlsx(t, out / safeguards.XLSX_NAME, county_table)
+    if county_table is not None:
+        write_county_csv(county_table, out / safeguards.COUNTY_CSV_NAME)
 
 
 # ---------- QA ----------
@@ -264,6 +301,7 @@ class QAContext:
     sensitivity: pd.DataFrame | None = None
     sensitivity_note: str = ""
     side: dict = field(default_factory=dict)  # IRS counts and ACS blank counts (pipeline.build)
+    county: pd.DataFrame | None = None  # the county roll-up; None skips its files and QA check
 
 
 def git_commit() -> str:
@@ -349,6 +387,36 @@ def qa_checks(t: pd.DataFrame, ctx: QAContext):
         body = md_table(rows.sort_values("ZCTA"), cols) if len(rows) else "None."
         lists.append(f"{title} ({len(rows)}):\n\n{body}")
     return checks, lists
+
+
+COUNTY_TOL = 1.0  # votes; ZCTA values are allocated floats, county sums are exact integers
+
+
+def county_check(t: pd.DataFrame, ctx: QAContext):
+    """County reg/to sums equal the ZCTA table sums plus the NONE bucket, both years.
+
+    Each of the four region totals (reg and to, 2022 and 2024) must agree within one vote.
+    A missing county table, or a year missing from the TLC facts, is a failure.
+    """
+    name = "county_sums"
+    head = "county reg/to sums equal the ZCTA table sums plus the NONE bucket"
+    c = ctx.county
+    if c is None:
+        return name, False, f"{head}: no county table"
+    none = {d["yy"]: d for d in ctx.tlc}
+    diffs, parts = {}, []
+    for yy in county.YEARS:
+        if yy not in none:
+            return name, False, f"{head}: no NONE bucket for 20{yy}"
+        for col, key in ((f"reg{yy}", "none_reg"), (f"to{yy}", "none_to")):
+            want = float(t[col].sum()) + none[yy][key]
+            got = float(c[col].astype("float64").sum())
+            diffs[col] = abs(got - want)
+            parts.append(f"{col} {got:,.0f} vs {want:,.1f}")
+    bad = sorted(k for k, v in diffs.items() if not v <= COUNTY_TOL)
+    detail = (f"{head}; " + "; ".join(parts) + f"; max abs diff {max(diffs.values()):.3f} "
+              f"(limit {COUNTY_TOL:g})" + (f"; off: {', '.join(bad)}" if bad else ""))
+    return name, not bad, detail
 
 
 def safeguards_check(result: dict[str, list[str]]):
@@ -533,13 +601,15 @@ def emit(t: pd.DataFrame, ctx: QAContext, out_dir, qa_dir, raw=None) -> bool:
     The map PNG and GeoJSON are written after the CSV and XLSX when ``raw`` is given (they need
     its shapefiles); without it only the CSV and XLSX are written.
     """
-    write_outputs(t, out_dir)
+    write_outputs(t, out_dir, ctx.county)
     if raw is not None:
         from . import map as hmap  # lazy: map imports this module
 
         hmap.write_map(t, raw, out_dir)
     sg = safeguards.run_all(out_dir)
     checks, lists = qa_checks(t, ctx)
+    if ctx.county is not None:  # build_all always sets it; a bare context skips the county files
+        checks.append(county_check(t, ctx))
     full = checks + [safeguards_check(sg)]
     text = render_report(t, ctx, full, lists)
     leaks = safeguards.check_banned_words({"qa_report": text})
@@ -598,7 +668,8 @@ def build_all(raw) -> tuple[pd.DataFrame, QAContext]:
     vds = {yy: turnout.load_vd(raw_path(raw, f"tlc_vd{yy}")) for yy in (22, 24)}
     tlc = [_tlc_year(yy, weights, vd, turnout.allocate(weights, vd, yy), t) for yy, vd in vds.items()]
     s = sensitivity(t, blocks, vds)
-    ctx = QAContext(commit=git_commit(), tlc=tlc, sensitivity=s, side=side)
+    ctx = QAContext(commit=git_commit(), tlc=tlc, sensitivity=s, side=side,
+                    county=county.county_table(raw, t))
     ctx.seconds = time.perf_counter() - t0
     return t, ctx
 

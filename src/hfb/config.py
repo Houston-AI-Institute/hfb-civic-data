@@ -14,6 +14,12 @@ COUNTIES: list[str] = [
     "201", "157", "039", "015", "473", "471", "071", "455", "407", "291",
 ]
 
+# Short county names, keyed like COUNTIES; checked against the 2020 PL geography file in the tests.
+COUNTY_NAMES: dict[str, str] = {
+    "201": "Harris", "157": "Fort Bend", "039": "Brazoria", "015": "Austin", "473": "Waller",
+    "471": "Walker", "071": "Chambers", "455": "Trinity", "407": "San Jacinto", "291": "Liberty",
+}
+
 ACS_TABLES = ["b05003", "b07003", "b25003", "b15003", "c16002", "b28002"]
 
 _TLC_API = "https://ted.capitol.texas.gov/api/Offices/{office}/1428/vtd"

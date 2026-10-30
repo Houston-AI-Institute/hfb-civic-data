@@ -59,16 +59,20 @@ def context(a: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(out, index=a.index)[CONTEXT_COLS]
 
 
-def read_context(raw: Path, zctas: pd.Index) -> pd.DataFrame:
-    """``context`` for ``zctas``, read from the raw ACS files; absent ZCTAs are blank (logged)."""
+def read_context(raw: Path, zctas: pd.Index, reader=acs.read_acs) -> pd.DataFrame:
+    """``context`` for ``zctas``, read from the raw ACS files; absent ZCTAs are blank (logged).
+
+    ``reader`` is ``acs.read_acs`` for ZCTAs; pass ``acs.read_acs_county`` with county FIPS to
+    read county rows instead (same formulas).
+    """
     zctas = pd.Index(zctas)
     parts = []
     for t in TABLES:
         key = f"acs_{t}"
-        part = acs.read_acs(raw_path(raw, key), zctas).reindex(zctas)
+        part = reader(raw_path(raw, key), zctas).reindex(zctas)
         absent = int(part.isna().all(axis=1).sum())
         if absent:
-            log.warning("%d of %d region ZCTAs have no %s row; their context values are blank",
-                        absent, len(zctas), key)
+            log.warning("%d of %d region geographies have no %s row; their context values are "
+                        "blank", absent, len(zctas), key)
         parts.append(part)
     return context(pd.concat(parts, axis=1))

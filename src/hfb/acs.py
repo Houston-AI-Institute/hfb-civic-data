@@ -11,6 +11,26 @@ import numpy as np
 import pandas as pd
 
 ZCTA_PREFIX = "860Z200US"
+COUNTY_PREFIX = "0500000US48"  # Texas counties; the 5-character key is the state+county FIPS
+
+
+def _read_rows(path, prefix, keys, index_name) -> pd.DataFrame:
+    """E and M columns (float) of the rows whose ``GEO_ID`` starts ``prefix``, keyed by the last
+    five characters of the ``GEO_ID`` and limited to ``keys``; sentinels become NaN."""
+    want = set(keys)
+    rows, found = [], []
+    with open(Path(path), encoding="utf-8-sig") as f:
+        header = f.readline().rstrip("\n").split("|")
+        for line in f:
+            if not line.startswith(prefix):
+                continue
+            k = line[:line.index("|")][-5:]
+            if k in want:
+                rows.append(line.rstrip("\n").split("|")[1:])
+                found.append(k)
+    out = pd.DataFrame(rows, index=pd.Index(found, name=index_name), columns=header[1:])
+    out = out.replace("", np.nan).astype(float)
+    return out.mask(out < 0)
 
 
 def read_acs(path, zctas) -> pd.DataFrame:
@@ -19,20 +39,14 @@ def read_acs(path, zctas) -> pd.DataFrame:
     A requested ZCTA with no row is simply absent from the result; callers that need
     full coverage check for it.
     """
-    want = set(zctas)
-    rows, keys = [], []
-    with open(Path(path), encoding="utf-8-sig") as f:
-        header = f.readline().rstrip("\n").split("|")
-        for line in f:
-            if not line.startswith(ZCTA_PREFIX):
-                continue
-            z = line[:line.index("|")][-5:]
-            if z in want:
-                rows.append(line.rstrip("\n").split("|")[1:])
-                keys.append(z)
-    out = pd.DataFrame(rows, index=pd.Index(keys, name="ZCTA"), columns=header[1:])
-    out = out.replace("", np.nan).astype(float)
-    return out.mask(out < 0)
+    return _read_rows(path, ZCTA_PREFIX, zctas, "ZCTA")
+
+
+def read_acs_county(path, fips) -> pd.DataFrame:
+    """The same E and M columns for the requested Texas counties (5-character FIPS such as
+    ``48201``, from the ``0500000US48`` rows), indexed by ``county_fips``. Absent counties are
+    absent from the result."""
+    return _read_rows(path, COUNTY_PREFIX, fips, "county_fips")
 
 
 def cvap(b05003: pd.DataFrame) -> pd.DataFrame:

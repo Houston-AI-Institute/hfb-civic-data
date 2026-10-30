@@ -118,7 +118,8 @@ def test_csv_reads_with_skiprows(built):
 
 def test_out_dir_allowlist(built):
     names = {p.name for p in built.out.iterdir()}
-    assert names <= {"zcta_civic.csv", "zcta_civic.xlsx", "zcta_p1_map.png", "zcta_civic.geojson"}
+    assert names <= {"zcta_civic.csv", "zcta_civic.xlsx", "zcta_p1_map.png", "zcta_civic.geojson",
+                     "county_civic.csv"}
     assert {"zcta_civic.csv", "zcta_civic.xlsx"} <= names
     repo_out = ROOT / "out"
     if repo_out.exists():
@@ -204,7 +205,8 @@ def test_integer_and_rounded_columns(built):
 
 def test_xlsx_text_cells_and_layout(built):
     wb = openpyxl.load_workbook(built.out / "zcta_civic.xlsx")
-    assert wb.sheetnames == ["data", "read_me"]
+    assert wb.sheetnames == (["data", "county", "read_me"] if built.kind == "real"
+                             else ["data", "read_me"])
     ws = wb["data"]
     assert ws["A1"].value == MISUSE
     assert [c.value for c in ws[2]] == COLS
@@ -274,8 +276,11 @@ def test_qa_block_lines(built):
     text = (built.qa / "qa_report.md").read_text()
     lines = [ln for ln in text.splitlines() if re.match(r"^(PASS|FAIL) \w+: ", ln)]
     names = [re.match(r"^(?:PASS|FAIL) (\w+):", ln).group(1) for ln in lines]
-    assert names == ["tlc_totals", "row_count", "none_registration", "ranked_count",
-                     "p1_gt_1_cvap_adj_le_0", "safeguards"]
+    expected = ["tlc_totals", "row_count", "none_registration", "ranked_count",
+                "p1_gt_1_cvap_adj_le_0", "county_sums", "safeguards"]
+    if built.kind == "synthetic":  # the synthetic context carries no county table
+        expected.remove("county_sums")
+    assert names == expected
     assert re.search(r"^OVERALL: (PASS|FAIL)$", text, re.M)
 
 

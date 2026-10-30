@@ -19,13 +19,14 @@ BANNED_WORDS = ("disengaged", "civic desert", "underperforming", "Houston Food B
 WHOLE_WORD = {"HFB"}  # matched as a whole word only; the rest as substrings
 FORBIDDEN_COLUMNS = ("NAME", "ICO", "STREET", "Spanish", "income", "poverty", "GEOID20", "CTBKEY")
 ALLOWED_OUT = frozenset({"zcta_civic.csv", "zcta_civic.xlsx", "zcta_p1_map.png",
-                         "zcta_civic.geojson"})
+                         "zcta_civic.geojson", "county_civic.csv"})
 DATA_STARTS = "Data starts on row 2"
 GREY = "BDBDBD"
 RANK_COLS = ("P1_rank", "rank_p05", "rank_p95")
 TEXT_COLS = ("ZCTA", "county_main")
 CSV_NAME, XLSX_NAME = "zcta_civic.csv", "zcta_civic.xlsx"
 GEOJSON_NAME = "zcta_civic.geojson"
+COUNTY_CSV_NAME, COUNTY_SHEET = "county_civic.csv", "county"  # sheet name = county.SHEET
 
 _BANNED_RE = [
     re.compile(r"\b" + re.escape(w) + r"\b" if w in WHOLE_WORD else re.escape(w), re.I)
@@ -69,6 +70,28 @@ def check_csv_row1(path) -> list[str]:
         fails.append(f"csv row 1 is not the single MISUSE field (got {len(first)} field(s))")
     if raw != '"' + MISUSE + '"':
         fails.append("csv row 1 is not fully quoted")
+    return fails
+
+
+def check_county_csv(path) -> list[str]:
+    """county_civic.csv: row 1 is MISUSE, no forbidden column, no banned word."""
+    return (check_csv_row1(path) + check_forbidden_columns(_read(path).columns)
+            + check_banned_words({COUNTY_CSV_NAME: Path(path).read_text()}))
+
+
+def check_county_sheet(wb) -> list[str]:
+    """xlsx ``county`` sheet: MISUSE in A1, header on row 2, no forbidden column, text FIPS."""
+    if COUNTY_SHEET not in wb.sheetnames:
+        return [f"xlsx has no {COUNTY_SHEET} sheet"]
+    ws = wb[COUNTY_SHEET]
+    fails = []
+    if ws["A1"].value != MISUSE:
+        fails.append(f"xlsx {COUNTY_SHEET} A1 is not MISUSE")
+    fails += check_forbidden_columns(c.value for c in ws[2] if c.value)
+    bad = [r[0].value for r in ws.iter_rows(min_row=3) if r[0].value is not None
+           and r[0].data_type != "s"]
+    if bad:
+        fails.append(f"xlsx {COUNTY_SHEET} county_fips not stored as text: {bad[:10]}")
     return fails
 
 
@@ -161,7 +184,8 @@ def _guard(fn, *a) -> list[str]:
 
 
 def run_all(out_dir) -> dict[str, list[str]]:
-    """Every output safeguard on ``out_dir``: ``{group: failures}`` for out_dir, csv and xlsx."""
+    """Every output safeguard on ``out_dir``: ``{group: failures}`` for out_dir, csv, xlsx and,
+    when present, csv_county (county_civic.csv, plus the xlsx county sheet under xlsx)."""
     out = Path(out_dir)
     res = {"out_dir": _guard(check_out_dir, out) if out.is_dir() else [f"{out} is not a directory"]}
     csv_p, xlsx_p = out / CSV_NAME, out / XLSX_NAME
@@ -186,6 +210,16 @@ def run_all(out_dir) -> dict[str, list[str]]:
             if "data" in wb.sheetnames:
                 f += check_forbidden_columns(c.value for c in wb["data"][2] if c.value)
             res["xlsx"] = f
+    cty_p = out / COUNTY_CSV_NAME
+    if cty_p.exists():  # written by hfb.county via assemble; the CSV and the sheet go together
+        res["csv_county"] = _guard(check_county_csv, cty_p)
+        if "xlsx" in res and xlsx_p.exists():
+            try:
+                wb = openpyxl.load_workbook(xlsx_p)
+            except Exception:
+                pass  # already reported under "xlsx"
+            else:
+                res["xlsx"] = res["xlsx"] + _guard(check_county_sheet, wb)
     gj_p = out / GEOJSON_NAME
     if gj_p.exists():  # written by hfb.map; the same word and column rules apply
         res["geojson"] = _guard(_check_geojson, gj_p)

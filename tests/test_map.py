@@ -252,8 +252,8 @@ def test_real_geojson_properties_equal_csv_for_all_rows(real_map, real_outputs):
 def test_real_outputs_include_map_files(real_outputs):
     out, _, ok = real_outputs
     assert ok
-    assert {"zcta_civic.csv", "zcta_civic.xlsx", "zcta_p1_map.png", "zcta_civic.geojson"} == {
-        p.name for p in out.iterdir()}
+    assert {"zcta_civic.csv", "zcta_civic.xlsx", "zcta_p1_map.png", "zcta_civic.geojson",
+            "county_civic.csv"} == {p.name for p in out.iterdir()}
 
 
 @pytest.mark.real
