@@ -37,3 +37,14 @@ def blocks(raw):
     from hfb import crosswalk
 
     return crosswalk.build_blocks(raw, write=False)
+
+
+@pytest.fixture(scope="session")
+def real_outputs(raw, tmp_path_factory):
+    """Full assemble build into a temp dir: (out_dir, qa_dir, overall_ok). Never touches out/."""
+    from hfb import assemble
+
+    base = tmp_path_factory.mktemp("assemble_real")
+    out, qa = base / "out", base / "qa"
+    ok = assemble.main(raw, out_dir=out, qa_dir=qa)
+    return out, qa, ok
