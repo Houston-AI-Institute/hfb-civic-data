@@ -61,7 +61,7 @@ def synth_table() -> pd.DataFrame:
     inreg = pd.Series(0.99, index=ix)
     side = pd.DataFrame({c: 0.4123456 for c in SIDE[:10]}, index=ix)
     side["civic_orgs_n"] = [0, 1, 2, 3, 5, 6]
-    side["civic_orgs_band"] = ["0", "1-2", "1-2", "3-5", "3-5", "6+"]
+    side["civic_orgs_band"] = ["0", "1 to 2", "1 to 2", "3 to 5", "3 to 5", "6 or more"]
     side["hoa_like_n"] = [0, 0, 1, 0, 2, 0]
     side.loc["77002", ["owner_occupied", "owner_occupied_moe"]] = np.nan
     return pipeline.assemble(region, acs, zpop, a22, a24, split, inreg, side)
@@ -400,7 +400,7 @@ def test_new_column_names_pass_forbidden_scan():
 def test_side_columns_format_and_blanks():
     f = assemble.format_table(synth_table())
     assert f.civic_orgs_n.dtype == "Int64" and f.hoa_like_n.dtype == "Int64"
-    assert f.civic_orgs_band.tolist().count("1-2") == 2
+    assert f.civic_orgs_band.tolist().count("1 to 2") == 2
     assert f.loc[f.ZCTA == "77002", "owner_occupied"].isna().all()
     assert (f.same_house_1yr.dropna() == 0.4123).all()
 

@@ -21,8 +21,8 @@ COLS = ["NAME", "ZIP", "STATUS", "NTEE_CD"]
 
 
 def band(n: int) -> str:
-    """'0', '1-2', '3-5' or '6+'."""
-    return "0" if n == 0 else "1-2" if n <= 2 else "3-5" if n <= 5 else "6+"
+    """'0', '1 to 2', '3 to 5' or '6 or more'."""
+    return "0" if n == 0 else "1 to 2" if n <= 2 else "3 to 5" if n <= 5 else "6 or more"
 
 
 def _read(path) -> tuple[pd.DataFrame, str]:

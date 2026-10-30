@@ -114,7 +114,7 @@ SIDE = ["same_house_1yr", "same_house_1yr_moe", "owner_occupied", "owner_occupie
 def side_frame(zs=("77001", "77002", "77003")):
     ix = pd.Index(zs, name="ZCTA")
     d = {c: 0.5 for c in SIDE}
-    d.update(civic_orgs_n=3, civic_orgs_band="3-5", hoa_like_n=1)
+    d.update(civic_orgs_n=3, civic_orgs_band="3 to 5", hoa_like_n=1)
     return pd.DataFrame(d, index=ix)[SIDE]
 
 
@@ -247,4 +247,4 @@ def test_real_table_has_side_columns_after_college_share(table):
     cols = list(table.columns)
     assert cols[-len(SIDE):] == SIDE
     assert table.civic_orgs_n.notna().all() and table.hoa_like_n.notna().all()
-    assert table.civic_orgs_band.isin(["0", "1-2", "3-5", "6+"]).all()
+    assert table.civic_orgs_band.isin(["0", "1 to 2", "3 to 5", "6 or more"]).all()

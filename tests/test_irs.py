@@ -33,7 +33,7 @@ def counts(tmp_path, rows, zctas=("77001", "77002", "77003"), all_extra=(), **kw
 
 def test_band_edges():
     got = {n: irs.band(n) for n in (0, 1, 2, 3, 5, 6, 40)}
-    assert got == {0: "0", 1: "1-2", 2: "1-2", 3: "3-5", 5: "3-5", 6: "6+", 40: "6+"}
+    assert got == {0: "0", 1: "1 to 2", 2: "1 to 2", 3: "3 to 5", 5: "3 to 5", 6: "6 or more", 40: "6 or more"}
 
 
 def test_prefix_includes_subcodes(tmp_path):
@@ -99,7 +99,7 @@ def test_empty_region_zcta_is_zero_not_blank(tmp_path):
     assert df.index.tolist() == ["77001", "77002", "77003"]
     assert list(df.columns) == ["civic_orgs_n", "civic_orgs_band", "hoa_like_n"]
     assert df.civic_orgs_n.dtype.kind == "i" and df.hoa_like_n.dtype.kind == "i"
-    assert df.loc["77001", "civic_orgs_band"] == "1-2"
+    assert df.loc["77001", "civic_orgs_band"] == "1 to 2"
 
 
 def test_lost_rows_fixture(tmp_path):

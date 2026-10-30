@@ -151,8 +151,7 @@ COLUMN_DEFS = {
         "organizations, not an estimate. Zero means none registered; registration is not a "
         "measure of civic life. Not used in P1 or the rank."),
     "civic_orgs_band": (
-        "Text band of civic_orgs_n: 0, 1-2, 3-5 or 6+. Spreadsheet programs may read 1-2 and "
-        "3-5 as dates; open the CSV with these columns as text."),
+        "Text band of civic_orgs_n: 0, 1 to 2, 3 to 5 or 6 or more."),
     "hoa_like_n": (
         "Count of active registered organizations in the ZCTA that look like homeowner or "
         "property-owner associations: NTEE code starting L5, or a registered name containing "
