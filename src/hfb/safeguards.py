@@ -5,6 +5,7 @@ returned no failures on that build. A failure message never repeats a banned wor
 """
 
 import csv
+import json
 import re
 from pathlib import Path
 from typing import Iterable, Mapping
@@ -24,6 +25,7 @@ GREY = "BDBDBD"
 RANK_COLS = ("P1_rank", "rank_p05", "rank_p95")
 TEXT_COLS = ("ZCTA", "county_main")
 CSV_NAME, XLSX_NAME = "zcta_civic.csv", "zcta_civic.xlsx"
+GEOJSON_NAME = "zcta_civic.geojson"
 
 _BANNED_RE = [
     re.compile(r"\b" + re.escape(w) + r"\b" if w in WHOLE_WORD else re.escape(w), re.I)
@@ -144,6 +146,13 @@ def _xlsx_texts(wb) -> dict[str, str]:
         for ws in wb}
 
 
+def _check_geojson(path) -> list[str]:
+    """Banned words anywhere in the text, forbidden fragments in any property name."""
+    text = Path(path).read_text(encoding="utf-8")
+    keys = {k for f in json.loads(text)["features"] for k in f["properties"]}
+    return check_banned_words({GEOJSON_NAME: text}) + check_forbidden_columns(sorted(keys))
+
+
 def _guard(fn, *a) -> list[str]:
     try:
         return fn(*a)
@@ -177,4 +186,7 @@ def run_all(out_dir) -> dict[str, list[str]]:
             if "data" in wb.sheetnames:
                 f += check_forbidden_columns(c.value for c in wb["data"][2] if c.value)
             res["xlsx"] = f
+    gj_p = out / GEOJSON_NAME
+    if gj_p.exists():  # written by hfb.map; the same word and column rules apply
+        res["geojson"] = _guard(_check_geojson, gj_p)
     return res

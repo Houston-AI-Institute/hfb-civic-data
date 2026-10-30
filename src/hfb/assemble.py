@@ -1,7 +1,7 @@
-"""Write the hand-off files (CSV, XLSX) and the internal QA report.
+"""Write the hand-off files (CSV, XLSX, map PNG, GeoJSON) and the internal QA report.
 
-``python -m hfb.assemble data/raw`` builds the 240-row table, writes ``out/zcta_civic.csv``
-and ``out/zcta_civic.xlsx``, runs the output safeguards, and writes ``qa/qa_report.md``. Outputs
+``python -m hfb.assemble data/raw`` builds the 240-row table, writes ``out/zcta_civic.csv``,
+``out/zcta_civic.xlsx``, ``out/zcta_p1_map.png`` and ``out/zcta_civic.geojson``, runs the output safeguards, and writes ``qa/qa_report.md``. Outputs
 are written even when a QA check fails; the command then exits non-zero.
 """
 
@@ -528,9 +528,17 @@ def render_report(t, ctx, checks, lists, commit=None) -> str:
         side_appendix_section(t, ctx.side), ""])
 
 
-def emit(t: pd.DataFrame, ctx: QAContext, out_dir, qa_dir) -> bool:
-    """Write the outputs, run safeguards, write the QA report. True when every check passes."""
+def emit(t: pd.DataFrame, ctx: QAContext, out_dir, qa_dir, raw=None) -> bool:
+    """Write the outputs, run safeguards, write the QA report. True when every check passes.
+
+    The map PNG and GeoJSON are written after the CSV and XLSX when ``raw`` is given (they need
+    its shapefiles); without it only the CSV and XLSX are written.
+    """
     write_outputs(t, out_dir)
+    if raw is not None:
+        from . import map as hmap  # lazy: map imports this module
+
+        hmap.write_map(t, raw, out_dir)
     sg = safeguards.run_all(out_dir)
     checks, lists = qa_checks(t, ctx)
     full = checks + [safeguards_check(sg)]
@@ -601,7 +609,7 @@ def main(raw, out_dir=Path("out"), qa_dir=Path("qa")) -> bool:
     t0 = time.perf_counter()
     t, ctx = build_all(raw)
     ctx.seconds = time.perf_counter() - t0
-    ok = emit(t, ctx, out_dir, qa_dir)
+    ok = emit(t, ctx, out_dir, qa_dir, raw=raw)
     lines = (Path(qa_dir) / "qa_report.md").read_text(encoding="utf-8").splitlines()
     for ln in lines:
         if ln.startswith(("PASS ", "FAIL ", "OVERALL:")):
