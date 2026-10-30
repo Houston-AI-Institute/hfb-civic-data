@@ -47,7 +47,7 @@ SOURCES: dict[str, Source] = {
         "tlc_blocks_pop", True),
     "pl": Source(
         "https://www2.census.gov/programs-surveys/decennial/2020/data/"
-        "01-Redistricting_File--PL_94171/Texas/tx2020.pl.zip",
+        "01-Redistricting_File--PL_94-171/Texas/tx2020.pl.zip",
         "pl", True),
     "zcta_county": Source(f"{_REL}/tab20_zcta520_county20_natl.txt", "zcta_county.txt", False),
     "zcta_tract": Source(f"{_REL}/tab20_zcta520_tract20_natl.txt", "zcta_tract.txt", False),

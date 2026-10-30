@@ -2,9 +2,11 @@ import csv
 import hashlib
 import zipfile
 
+import pytest
+
 from hfb import copy as copy_mod
 from hfb import fetch
-from hfb.config import SEED, SOURCES, Source
+from hfb.config import ACS_TABLES, COUNTIES, SEED, SOURCES, Source
 
 COLUMNS = ["key", "url", "path", "source", "sha256", "bytes", "fetched_utc"]
 
@@ -106,3 +108,49 @@ def test_copy_constants():
         "IRS Exempt Organizations Business Master File, Texas extract.",
         "Not a TLC, Census Bureau or IRS product.",
     )
+
+
+def test_seed_missing_raises(tmp_path):
+    seed_root = tmp_path / "seed"
+    seed_root.mkdir()
+    sources = {"gone": Source("https://example.invalid/gone.csv", "gone.csv", False)}
+    raw = tmp_path / "raw"
+
+    with pytest.raises(FileNotFoundError, match=r"gone.*missing/gone\.csv"):
+        fetch.fetch_all(raw, seed_root, sources=sources, seed={"gone": "missing/gone.csv"})
+    # unmapped key with a seed_root also never falls back to the network
+    with pytest.raises(FileNotFoundError, match="gone"):
+        fetch.fetch_all(raw, seed_root, sources=sources, seed={})
+
+
+def test_source_urls_match_brief():
+    """Pin every URL against the brief's table (typed independently of config.py)."""
+    expected = {
+        "tlc_vd24": "https://ted.capitol.texas.gov/api/Offices/510/1428/vtd",
+        "tlc_vd22": "https://ted.capitol.texas.gov/api/Offices/497/1428/vtd",
+        "tlc_vtds24": "https://data.capitol.texas.gov/dataset/4d8298d0-d176-4c19-b174-42837027b73e/resource/906f47e4-4e39-4156-b1bd-4969be0b2780/download/vtds_24pg.zip",
+        "tlc_vtdpop24": "https://data.capitol.texas.gov/dataset/4d8298d0-d176-4c19-b174-42837027b73e/resource/bf9b54a8-090c-41d0-8f00-e263fc1789c5/download/vtds_24pg_pop.zip",
+        "tlc_blocks_pop": "https://data.capitol.texas.gov/dataset/2b59f5ce-5fa4-4040-a550-caffbe8986c4/resource/33ed77c5-951b-4a88-9de7-9c90c4ba50db/download/blocks_pop.zip",
+        "pl": "https://www2.census.gov/programs-surveys/decennial/2020/data/01-Redistricting_File--PL_94-171/Texas/tx2020.pl.zip",
+        "zcta_county": "https://www2.census.gov/geo/docs/maps-data/data/rel2020/zcta520/tab20_zcta520_county20_natl.txt",
+        "zcta_tract": "https://www2.census.gov/geo/docs/maps-data/data/rel2020/zcta520/tab20_zcta520_tract20_natl.txt",
+        "irs_eo_tx": "https://www.irs.gov/pub/irs-soi/eo_tx.csv",
+        "cb_zcta": "https://www2.census.gov/geo/tiger/GENZ2020/shp/cb_2020_us_zcta520_500k.zip",
+    }
+    assert COUNTIES == ["201", "157", "039", "015", "473", "471", "071", "455", "407", "291"]
+    for c in COUNTIES:
+        expected[f"blk_{c}"] = (
+            f"https://www2.census.gov/geo/tiger/TIGER2020PL/STATE/48_TEXAS/48{c}/"
+            f"tl_2020_48{c}_tabblock20.zip"
+        )
+        expected[f"faces_{c}"] = (
+            f"https://www2.census.gov/geo/tiger/TIGER2020/FACES/tl_2020_48{c}_faces.zip"
+        )
+    assert ACS_TABLES == ["b05003", "b07003", "b25003", "b15003", "c16002", "b28002"]
+    for t in ACS_TABLES:
+        expected[f"acs_{t}"] = (
+            "https://www2.census.gov/programs-surveys/acs/summary_file/2024/"
+            f"table-based-SF/data/5YRData/acsdt5y2024-{t}.dat"
+        )
+    assert len(expected) == 36
+    assert {k: v.url for k, v in SOURCES.items()} == expected

@@ -2,9 +2,9 @@
 
 Usage: python -m hfb.fetch RAW_DIR [--seed SEED_ROOT]
 
-A key with a seed file is copied (or, for zips, extracted) from the seed with no
-network access; the manifest ``source`` column says ``seed``. Anything else is
-downloaded (``download``). Downloaded zips are cached at ``raw_dir/_zips/<key>.zip``.
+With a seed root, every key is copied (or, for zips, extracted) from the seed with
+no network access (manifest ``source`` = ``seed``); a missing seed file raises
+FileNotFoundError. Without a seed root every key is downloaded (``download``). Downloaded zips are cached at ``raw_dir/_zips/<key>.zip``.
 Manifest ``path`` is relative to raw_dir.
 """
 
@@ -63,8 +63,12 @@ def fetch_all(
     raw_dir.mkdir(parents=True, exist_ok=True)
     rows = []
     for key, src in sources.items():
-        seed_file = Path(seed_root) / seed[key] if seed_root and key in seed else None
-        if seed_file is not None and seed_file.is_file():
+        if seed_root is not None:
+            # With a seed, never touch the network: a missing seed file is an error.
+            seed_file = Path(seed_root) / seed[key] if key in seed else None
+            if seed_file is None or not seed_file.is_file():
+                expected = seed_file if seed_file is not None else f"<no SEED entry under {seed_root}>"
+                raise FileNotFoundError(f"seed file for {key!r} not found: {expected}")
             origin, payload = "seed", seed_file
         else:
             origin = "download"
