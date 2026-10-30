@@ -27,7 +27,8 @@ A low score is not low interest.
 
 | File | What it holds |
 |---|---|
-| `zcta_civic.xlsx` | Sheet `data`: the table, with rows that are not ranked shaded grey and sorted last. Sheet `read_me`: the statements above and a definition for every column. |
+| `zcta_civic.xlsx` | Sheet `data`: the ZCTA table, with rows that are not ranked shaded grey and sorted last. Sheet `county`: the county table. Sheet `read_me`: the statements above and a definition for every column. |
+| `county_civic.csv` | One row per county (10 rows). Same layout as the ZCTA CSV: use statement on row 1, column names on row 2. |
 | `zcta_civic.csv` | The same table. Row 1 holds the use statement; the column names are on row 2. In Python use `pd.read_csv(path, skiprows=1, dtype={"ZCTA": str, "county_main": str})` so ZIP codes keep their leading digits. |
 | `zcta_civic.geojson` | ZCTA shapes (EPSG:4326) with the same columns as properties, plus `use_limit` and `credits` at the top level. |
 | `zcta_p1_map.png` | P1 in five equal-count classes over ranked ZCTAs; not-ranked ZCTAs in grey; county outlines. For the food bank's hand-off only; use county views in recorded talks. |
@@ -85,7 +86,20 @@ Rows overlap, so the counts add to more than 65. P1 is left blank for LAND, PART
 | Liberty | 3 of 12 | 55% |
 | Walker | 1 of 10 | 47% |
 
-Counties are assigned by `county_main`, the county holding most of each ZCTA's land. In the rural counties most ZIP areas are small or cross county lines, so few are ranked. For Walker, Liberty and San Jacinto, a ZCTA ranking does not describe most of the county; use county-level views there.
+Counties are assigned by `county_main`, the county holding most of each ZCTA's land. In the rural counties most ZIP areas are small or cross county lines, so few are ranked. For Walker, Liberty and San Jacinto, a ZCTA ranking does not describe most of the county; use the county table there.
+
+## County table
+
+`county_civic.csv` and the `county` sheet give the same measure for each whole county. Where ZIP areas are too small or cross county lines, this is the fallback.
+
+- Registered voters and ballots cast are the Texas Legislative Council county totals, summed straight from voting districts with no sharing out, so they are exact.
+- `cvap` and the five neighbourhood conditions are the ACS county estimates, with margins of error. County estimates rest on much larger samples than ZIP estimates.
+- `P1` uses the same formula as the ZCTA table. `P1_low` and `P1_high` show P1 with `cvap` moved to the top and bottom of its margin of error.
+- `zctas_ranked`, `zctas_total` and `reg24_share_ranked` show how much of the county the ZCTA ranking covers.
+- `civic_orgs_main` adds up `civic_orgs_n` over ZCTAs whose `county_main` is the county, so it carries the same mailing ZIP limits.
+- Counties are not ranked. Ten rows are too few for a rank to mean much, and a ranking of counties invites a league table.
+
+In Walker County about 15,000 people live in adult correctional facilities (2020 Census). They are subtracted before P1 is computed, which is why its `cvap_adj` is much lower than `cvap`.
 
 ## Caution flags
 
