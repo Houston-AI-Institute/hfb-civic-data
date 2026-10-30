@@ -19,7 +19,7 @@ import openpyxl
 import pandas as pd
 from openpyxl.styles import Alignment, Font, PatternFill
 
-from . import crosswalk, flags, pipeline, safeguards, score, turnout
+from . import context, crosswalk, flags, pipeline, safeguards, score, turnout
 from .config import COUNTIES
 from .copy import CREDITS, MISUSE, P1_FOOTNOTE, RANK_DIRECTION, REQUIRED_LINES, USE_LIMIT
 from .paths import raw_path
@@ -31,11 +31,12 @@ COLUMNS = [
     "reg24", "to24", "to_reg24", "cvap", "cvap_moe", "corr_adult", "cvap_adj", "P1",
     "P1_rank", "rank_p05", "rank_p95", "not_ranked", "not_ranked_reason", "caution",
     "split_exposure", "gq_share", "college_share",
+    *context.CONTEXT_COLS, "civic_orgs_n", "civic_orgs_band", "hoa_like_n",
 ]
 INT_COLS = ["acs_pop", "reg22", "to22", "reg24", "to24", "cvap", "cvap_moe", "corr_adult",
-            "cvap_adj"]
+            "cvap_adj", "civic_orgs_n", "hoa_like_n"]
 DP4_COLS = ["land_share", "inreg_share20", "to_reg24", "P1", "split_exposure", "gq_share",
-            "college_share"]
+            "college_share", *context.CONTEXT_COLS]
 DP1_COLS = ["P1_rank", "rank_p05", "rank_p95"]
 TEXT_COLS = ["ZCTA", "county_main"]
 
@@ -110,6 +111,55 @@ COLUMN_DEFS = {
     "gq_share": "Group quarters population divided by total 2020 population.",
     "college_share": "College and university housing population divided by total 2020 "
                      "population.",
+    "same_house_1yr": (
+        "Share of people aged 1 and over who lived in the same house one year earlier "
+        "(ACS 2020-2024 5-year, table B07003), 0 to 1. Context only; not used in P1 or the "
+        "rank. A sampling estimate. Blank where the table has no row for the ZCTA or its "
+        "universe is zero."),
+    "same_house_1yr_moe": "90 percent margin of error on same_house_1yr, as a share (0 to 1).",
+    "owner_occupied": (
+        "Share of occupied housing units that are owner occupied (ACS 2020-2024 5-year, "
+        "table B25003), 0 to 1. Context only; not used in P1 or the rank. A sampling "
+        "estimate. Blank where the table has no row for the ZCTA or its universe is zero."),
+    "owner_occupied_moe": "90 percent margin of error on owner_occupied, as a share (0 to 1).",
+    "hs_diploma_25plus": (
+        "Share of people aged 25 and over whose highest attainment is a regular high school "
+        "diploma or above: regular diploma through doctorate, so GED and some-college "
+        "categories are included (ACS 2020-2024 5-year, table B15003), 0 to 1. Context only; "
+        "not used in P1 or the rank. A sampling estimate. Blank where the table has no row "
+        "for the ZCTA or its universe is zero."),
+    "hs_diploma_25plus_moe": "90 percent margin of error on hs_diploma_25plus, as a share "
+                             "(0 to 1).",
+    "not_limited_english_hh": (
+        "Share of households that are not limited English speaking: one minus the share that "
+        "are, across all language groups (ACS 2020-2024 5-year, table C16002), 0 to 1. "
+        "Context only; not used in P1 or the rank. A sampling estimate. Blank where the table "
+        "has no row for the ZCTA or its universe is zero."),
+    "not_limited_english_hh_moe": (
+        "90 percent margin of error on not_limited_english_hh, as a share (0 to 1); the same "
+        "as the margin of the limited English speaking share."),
+    "broadband_hh": (
+        "Share of households with a broadband internet subscription of any type (ACS "
+        "2020-2024 5-year, table B28002), 0 to 1. Context only; not used in P1 or the rank. A "
+        "sampling estimate. Blank where the table has no row for the ZCTA or its universe is "
+        "zero."),
+    "broadband_hh_moe": "90 percent margin of error on broadband_hh, as a share (0 to 1).",
+    "civic_orgs_n": (
+        "Count of active tax-exempt organizations registered in the ZCTA with a civic-purpose "
+        "activity code (NTEE S20, S21, S22, S80, S81, S82 or W24, any subsection; R40 and R6* "
+        "left out), IRS Business Master File, Texas extract. An exact count of registered "
+        "organizations, not an estimate. Zero means none registered; registration is not a "
+        "measure of civic life. Not used in P1 or the rank."),
+    "civic_orgs_band": (
+        "Text band of civic_orgs_n: 0, 1-2, 3-5 or 6+. Spreadsheet programs may read 1-2 and "
+        "3-5 as dates; open the CSV with these columns as text."),
+    "hoa_like_n": (
+        "Count of active registered organizations in the ZCTA that look like homeowner or "
+        "property-owner associations: NTEE code starting L5, or a registered name containing "
+        "homeowner, home owner, property owner, owners assoc, POA, HOA, townhome or condo "
+        "(R40 and R6* left out). An exact count of registered organizations, not an estimate. "
+        "An organization can be in both this count and civic_orgs_n. Names are matched during "
+        "the build and are not stored in this file. Not used in P1 or the rank."),
 }
 
 
@@ -151,8 +201,10 @@ def _read_me_rows() -> list[tuple]:
     rows += [("Layout", "Data starts on row 2"),
              ("", "Row 1 holds the use statement; row 2 is the column header and the table "
                   "starts there. Read the CSV with skiprows=1."),
-             ("Counts", "Counts are rounded estimates, not exact figures. ZCTA-level counts "
-                        "are not suppressed below 50, so read small counts with care."),
+             ("Counts", "Counts are rounded estimates, not exact figures, except "
+                        "civic_orgs_n and hoa_like_n, which are exact counts of registered "
+                        "organizations. ZCTA-level counts are not suppressed below 50, so read "
+                        "small counts with care."),
              ("", ""), ("Column", "Definition")]
     return rows + [(c, COLUMN_DEFS[c]) for c in COLUMNS]
 
@@ -212,6 +264,7 @@ class QAContext:
     tlc: list = field(default_factory=list)
     sensitivity: pd.DataFrame | None = None
     sensitivity_note: str = ""
+    side: dict = field(default_factory=dict)  # IRS counts and ACS blank counts (pipeline.build)
 
 
 def git_commit() -> str:
@@ -413,6 +466,42 @@ def appendix_section(s: pd.DataFrame | None, note: str) -> str:
     return "\n".join(lines)
 
 
+CONTEXT_BASES = list(context.SPECS)
+
+
+def side_appendix_section(t: pd.DataFrame, side: dict) -> str:
+    """Aggregate numbers for the IRS and ACS side columns; no ZCTA-level IRS detail."""
+    lines = ["The side columns are context only; they feed no flag, P1 or rank.", ""]
+    if side:
+        blank = ", ".join(f"{k} {v}" for k, v in side["context_blank"].items())
+        lines += [
+            f"IRS Business Master File, Texas extract (read as {side['encoding']}):", "",
+            f"- Rows with STATUS 01: {side['irs_total_active']:,}",
+            f"- civic_orgs_n, region total: {side['civic_region']:,}",
+            f"- hoa_like_n, region total: {side['hoa_like_region']:,}",
+            f"- Overlap (rows counted in both): {side['overlap']:,}",
+            "- Lost IRS rows (civic rows in a region ZIP3 whose ZIP is in no ZCTA): "
+            f"{side['lost_irs_rows']:,}",
+            f"- Out of region (other civic rows outside the {len(t)} ZCTAs): "
+            f"{side['out_of_region']:,}", "",
+            f"ACS context, ZCTAs with a blank estimate (no table row or zero universe): {blank}",
+            ""]
+    else:
+        lines += ["IRS and ACS coverage counts: not run in this context.", ""]
+    r = _ranked(t)
+    lines += ["### correlation with conditions", "",
+              "Spearman correlation of P1_rank with each context column, over ranked ZCTAs that "
+              "have a value. Descriptive only; it says nothing about cause.", "",
+              "| context column | ZCTAs | Spearman |", "|---|---|---|"]
+    for c in CONTEXT_BASES:
+        if c not in r:
+            continue
+        pair = r[["P1_rank", c]].dropna()
+        rho = pair.P1_rank.rank().corr(pair[c].rank()) if len(pair) > 2 else float("nan")
+        lines.append(f"| {c} | {len(pair)} | {rho:.3f} |" if rho == rho else f"| {c} | {len(pair)} | n/a |")
+    return "\n".join(lines)
+
+
 def render_report(t, ctx, checks, lists, commit=None) -> str:
     """The QA report text; ``checks`` is the full PASS/FAIL list including safeguards."""
     block = [f"{'PASS' if ok else 'FAIL'} {name}: {detail}" for name, ok, detail in checks]
@@ -434,7 +523,9 @@ def render_report(t, ctx, checks, lists, commit=None) -> str:
         "would be without it, (to22 + to24) / (2 * cvap).", "", corr_adult_section(t), "",
         "### 2.5 Counts by flag reason", "", flag_counts_section(t), "",
         "## 3. Appendix: weight sensitivity", "",
-        appendix_section(ctx.sensitivity, ctx.sensitivity_note), ""])
+        appendix_section(ctx.sensitivity, ctx.sensitivity_note), "",
+        "## 4. Appendix: ACS context and IRS civic counts", "",
+        side_appendix_section(t, ctx.side), ""])
 
 
 def emit(t: pd.DataFrame, ctx: QAContext, out_dir, qa_dir) -> bool:
@@ -494,13 +585,13 @@ def build_all(raw) -> tuple[pd.DataFrame, QAContext]:
     """The table plus everything the QA report needs (reads ``raw`` once more for TLC checks)."""
     raw = Path(raw)
     t0 = time.perf_counter()
-    t = pipeline.build_table(raw)
+    t, side = pipeline.build(raw)
     blocks = crosswalk.build_blocks(raw, write=False)
     weights = crosswalk.vtd_weights(blocks)
     vds = {yy: turnout.load_vd(raw_path(raw, f"tlc_vd{yy}")) for yy in (22, 24)}
     tlc = [_tlc_year(yy, weights, vd, turnout.allocate(weights, vd, yy), t) for yy, vd in vds.items()]
     s = sensitivity(t, blocks, vds)
-    ctx = QAContext(commit=git_commit(), tlc=tlc, sensitivity=s)
+    ctx = QAContext(commit=git_commit(), tlc=tlc, sensitivity=s, side=side)
     ctx.seconds = time.perf_counter() - t0
     return t, ctx
 

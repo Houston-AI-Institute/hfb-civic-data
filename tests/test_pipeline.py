@@ -105,6 +105,44 @@ def test_assemble_is_deterministic():
     pd.testing.assert_frame_equal(a, b)
 
 
+SIDE = ["same_house_1yr", "same_house_1yr_moe", "owner_occupied", "owner_occupied_moe",
+        "hs_diploma_25plus", "hs_diploma_25plus_moe", "not_limited_english_hh",
+        "not_limited_english_hh_moe", "broadband_hh", "broadband_hh_moe",
+        "civic_orgs_n", "civic_orgs_band", "hoa_like_n"]
+
+
+def side_frame(zs=("77001", "77002", "77003")):
+    ix = pd.Index(zs, name="ZCTA")
+    d = {c: 0.5 for c in SIDE}
+    d.update(civic_orgs_n=3, civic_orgs_band="3-5", hoa_like_n=1)
+    return pd.DataFrame(d, index=ix)[SIDE]
+
+
+def test_side_columns_are_appended_and_change_nothing_else():
+    base = pipeline.assemble(**pieces())
+    with_side = pipeline.assemble(**pieces(), side=side_frame())
+    assert list(with_side.columns[:len(base.columns)]) == list(base.columns)
+    assert list(with_side.columns[len(base.columns):]) == SIDE
+    pd.testing.assert_frame_equal(with_side[base.columns], base)
+
+
+def test_side_columns_never_feed_flags_p1_or_rank():
+    base = pipeline.assemble(**pieces())
+    side = side_frame()
+    side[["owner_occupied", "same_house_1yr"]] = np.nan  # blank context must not unrank a row
+    side["civic_orgs_n"] = 0
+    t = pipeline.assemble(**pieces(), side=side)
+    for c in ("P1", "P1_rank", "rank_p05", "rank_p95", "not_ranked", "not_ranked_reason",
+              "caution"):
+        pd.testing.assert_series_equal(t[c], base[c])
+
+
+def test_side_is_aligned_to_region_index():
+    side = side_frame(("77003", "77001", "77002")).drop("77002")  # shuffled, one missing
+    t = pipeline.assemble(**pieces(), side=side)
+    assert t.loc["77003", "civic_orgs_n"] == 3 and np.isnan(t.loc["77002", "owner_occupied"])
+
+
 # ---------- real data ----------
 
 def codes(t, col, code):
@@ -202,3 +240,11 @@ def test_real_ranks_only_on_ranked_rows(table):
 def test_real_build_is_fast_enough(timed):
     print(f"build_table seconds: {timed[1]:.1f}")
     assert timed[1] < 300
+
+
+@pytest.mark.real
+def test_real_table_has_side_columns_after_college_share(table):
+    cols = list(table.columns)
+    assert cols[-len(SIDE):] == SIDE
+    assert table.civic_orgs_n.notna().all() and table.hoa_like_n.notna().all()
+    assert table.civic_orgs_band.isin(["0", "1-2", "3-5", "6+"]).all()

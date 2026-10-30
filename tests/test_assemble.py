@@ -22,10 +22,16 @@ COLS = ["ZCTA", "county_main", "land_share", "inreg_share20", "acs_pop", "reg22"
         "reg24", "to24", "to_reg24", "cvap", "cvap_moe", "corr_adult", "cvap_adj", "P1",
         "P1_rank", "rank_p05", "rank_p95", "not_ranked", "not_ranked_reason", "caution",
         "split_exposure", "gq_share", "college_share"]
+CTX = ["same_house_1yr", "owner_occupied", "hs_diploma_25plus", "not_limited_english_hh",
+       "broadband_hh"]
+SIDE = [x for k in CTX for x in (k, f"{k}_moe")] + ["civic_orgs_n", "civic_orgs_band",
+                                                     "hoa_like_n"]
+BASE_COLS = COLS  # the 24 columns frozen at the gate snapshot
+COLS = BASE_COLS + SIDE
 INT_COLS = ["acs_pop", "reg22", "to22", "reg24", "to24", "cvap", "cvap_moe", "corr_adult",
-            "cvap_adj"]
+            "cvap_adj", "civic_orgs_n", "hoa_like_n"]
 DP4 = ["land_share", "inreg_share20", "to_reg24", "P1", "split_exposure", "gq_share",
-       "college_share"]
+       "college_share", *SIDE[:10]]
 DP1 = ["P1_rank", "rank_p05", "rank_p95"]
 
 
@@ -53,7 +59,12 @@ def synth_table() -> pd.DataFrame:
     a24.loc["NONE"] = [5.0, 5.0]
     split = pd.Series(0.123456, index=ix)
     inreg = pd.Series(0.99, index=ix)
-    return pipeline.assemble(region, acs, zpop, a22, a24, split, inreg)
+    side = pd.DataFrame({c: 0.4123456 for c in SIDE[:10]}, index=ix)
+    side["civic_orgs_n"] = [0, 1, 2, 3, 5, 6]
+    side["civic_orgs_band"] = ["0", "1-2", "1-2", "3-5", "3-5", "6+"]
+    side["hoa_like_n"] = [0, 0, 1, 0, 2, 0]
+    side.loc["77002", ["owner_occupied", "owner_occupied_moe"]] = np.nan
+    return pipeline.assemble(region, acs, zpop, a22, a24, split, inreg, side)
 
 
 def synth_ctx(table) -> assemble.QAContext:
@@ -371,6 +382,88 @@ def test_sensitivity_section_skipped_note_and_stats():
     assert "Spearman" in text and "0.886" in text  # 1 - 6*4/(6*35)
     assert re.search(r"Median absolute rank shift: [\d.]+", text)
     assert re.search(r"Maximum absolute rank shift: 20\.0", text)
+
+
+# ---------- Task 7: side columns, frozen columns, appendix ----------
+
+SIDE_QA = dict(irs_total_active=1234, civic_region=550, hoa_like_region=400, overlap=38,
+               lost_irs_rows=7, out_of_region=900, encoding="utf-8",
+               context_blank={c: 2 for c in CTX})
+
+
+def test_new_column_names_pass_forbidden_scan():
+    assert safeguards.check_forbidden_columns(SIDE) == []
+    assert len(SIDE) == 13 and assemble.COLUMNS[-13:] == SIDE
+    assert assemble.COLUMNS[:24] == BASE_COLS
+
+
+def test_side_columns_format_and_blanks():
+    f = assemble.format_table(synth_table())
+    assert f.civic_orgs_n.dtype == "Int64" and f.hoa_like_n.dtype == "Int64"
+    assert f.civic_orgs_band.tolist().count("1-2") == 2
+    assert f.loc[f.ZCTA == "77002", "owner_occupied"].isna().all()
+    assert (f.same_house_1yr.dropna() == 0.4123).all()
+
+
+def test_read_me_says_irs_counts_are_not_estimates_and_ctx_is_context():
+    d = assemble.COLUMN_DEFS
+    for c in ("civic_orgs_n", "hoa_like_n"):
+        assert "not an estimate" in d[c]
+    assert "exact" in assemble._read_me_rows()[
+        [r[0] for r in assemble._read_me_rows()].index("Counts")][1]
+    assert "margin of error" in d["same_house_1yr_moe"]
+    assert "not used in P1" in d["same_house_1yr"]
+    assert safeguards.check_banned_words({"defs": "\n".join(d.values())}) == []
+
+
+def test_side_appendix_numbers_and_correlation_heading():
+    t = synth_table()
+    t["P1_rank"] = [np.nan, 20.0, 40.0, np.nan, 60.0, np.nan]
+    t["not_ranked"] = t.P1_rank.isna()
+    t["same_house_1yr"] = [0.1, 0.2, 0.3, 0.9, 0.4, 0.9]  # monotone in rank over ranked rows
+    t["broadband_hh"] = [0.1, 0.5, 0.9, 0.1, 0.1, 0.1]  # ranked values 0.5, 0.9, 0.1
+    text = assemble.side_appendix_section(t, SIDE_QA)
+    assert "correlation with conditions" in text
+    assert re.search(r"same_house_1yr[^\n]*1\.000", text)
+    assert re.search(r"broadband_hh[^\n]*-0\.500", text)
+    for s in ("1,234", "550", "400", "38", "lost", "out of region", "utf-8"):
+        assert s.lower() in text.lower(), s
+    assert len(text.splitlines()) < 40
+    assert not re.search(r"\b\d{5}\b", text.replace("1,234", ""))  # no ZCTA-level lines
+
+
+def test_side_appendix_without_irs_context_is_noted():
+    text = assemble.side_appendix_section(synth_table(), {})
+    assert "correlation with conditions" in text and "not run" in text.lower()
+
+
+def test_report_has_side_appendix_after_sensitivity(synth):
+    text = (synth.qa / "qa_report.md").read_text()
+    assert text.index("Appendix: weight sensitivity") < text.index("correlation with conditions")
+
+
+@pytest.mark.real
+def test_real_report_appendix_numbers(real_outputs):
+    out, qa, ok = real_outputs
+    text = (qa / "qa_report.md").read_text()
+    sec = text[text.index("## 4."):]
+    for k in ("STATUS 01", "lost", "out of region", "overlap", "correlation with conditions"):
+        assert k in sec.lower() or k in sec, k
+    assert ok is True and re.search(r"^OVERALL: PASS$", text, re.M)
+
+
+@pytest.mark.real
+def test_existing_columns_equal_gate_snapshot(real_outputs):
+    snap = ROOT / "qa" / "zcta_civic_gate_3cbef77.csv"
+    if not snap.exists():
+        pytest.skip("gate snapshot qa/zcta_civic_gate_3cbef77.csv is absent")
+    old = pd.read_csv(snap, skiprows=1, dtype=str, keep_default_na=False)
+    new = pd.read_csv(real_outputs[0] / "zcta_civic.csv", skiprows=1, dtype=str,
+                      keep_default_na=False)
+    assert list(old.columns) == BASE_COLS
+    assert list(new.columns[:24]) == BASE_COLS
+    assert len(new) == len(old)
+    assert new[BASE_COLS].equals(old)  # exact string equality per cell
 
 
 def test_cli_exit_code_follows_overall(monkeypatch, tmp_path):
