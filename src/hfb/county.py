@@ -115,8 +115,17 @@ def tlc_sums(vd: pd.DataFrame) -> pd.DataFrame:
 
 
 def corr_adult_by_county(gq: pd.DataFrame) -> pd.Series:
-    """Adult correctional group quarters by county (3-digit code) from the PL block table."""
-    return gq.groupby(gq.GEOID20.str[2:5]).corr_adult.sum().reindex(COUNTIES)
+    """Adult correctional group quarters by county (3-digit code) from the PL block table.
+
+    Grouped by the block's own county (``GEOID20[2:5]``), never by the county of the ZCTA the
+    block falls in. A county with blocks but no correctional people is 0; a region county with
+    no blocks at all raises ``ValueError`` (a truncated PL read must not become 0).
+    """
+    got = gq.groupby(gq.GEOID20.str[2:5]).corr_adult.sum().reindex(COUNTIES)
+    absent = sorted(got.index[got.isna()])
+    if absent:
+        raise ValueError(f"counties with no blocks in the PL group quarters table: {absent}")
+    return got
 
 
 def _p1(to22, to24, den: pd.Series) -> pd.Series:
@@ -143,7 +152,10 @@ def build(vd_sums: dict, b05003: pd.DataFrame, ctx: pd.DataFrame, corr: pd.Serie
     v = acs.cvap(b05003.reindex(fips))
     c["cvap"] = v.cvap.round().to_numpy()
     c["cvap_moe"] = v.cvap_moe.round().to_numpy()
-    c["corr_adult"] = corr.reindex(COUNTIES).fillna(0).to_numpy()
+    corr = corr.reindex(COUNTIES)
+    if corr.isna().any():
+        raise ValueError(f"counties with no corr_adult value: {sorted(corr.index[corr.isna()])}")
+    c["corr_adult"] = corr.to_numpy()
     c["cvap_adj"] = c.cvap - c.corr_adult
     c["P1"] = _p1(c.to22, c.to24, c.cvap_adj)
     c["P1_low"] = _p1(c.to22, c.to24, c.cvap_adj + c.cvap_moe)

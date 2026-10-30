@@ -181,12 +181,66 @@ def test_county_real_sanity(county_real, table, raw):
         assert 0.4 < c.loc[f, "reg24_share_ranked"] < 0.7, f
     assert c.loc["48201", "reg24_share_ranked"] > 0.9
     assert (c.corr_adult >= 0).all() and (c.cvap_adj < c.cvap).any()
+    # every correctional adult is in some block of some region county, and the ZCTA column is
+    # the same blocks grouped by ZCTA (NONE excluded), so the totals must agree exactly
+    assert int(c.corr_adult.sum()) == int(table.corr_adult.sum())
     assert 2_500_000 < c.loc["48201", "cvap"] < 4_838_303  # below Harris total population
     # names agree with the 2020 PL geography file
     geo = pd.read_csv(raw_path(raw, "pl") / "txgeo2020.pl", sep="|", header=None, dtype=str,
                       encoding="latin-1", quoting=csv.QUOTE_NONE, usecols=[2, 9, 86])
     geo = geo[geo[2] == "050"].set_index(9)[86]
     assert {f: geo[f] for f in FIPS} == dict(zip(c.index, c.county_label))
+
+
+# ---------- corr_adult by county ----------
+
+def _gq(rows):
+    """PL-style block frame: (county code, tract, block, corr_adult[, ZCTA]) -> GEOID20 frame."""
+    return pd.DataFrame({
+        "GEOID20": [f"48{c}{tr}{b}" for c, tr, b, *_ in rows],
+        "corr_adult": [r[3] for r in rows],
+        "ZCTA": [r[4] if len(r) > 4 else "" for r in rows]})
+
+
+def _all_counties(extra=None):
+    rows = [(c, "000100", "1000", 0) for c in COUNTIES]  # a block with no correctional people
+    return rows + (extra or [])
+
+
+def test_corr_adult_by_county_groups_by_the_blocks_own_county():
+    # 77001 is a Harris (201) ZCTA by land, but block 157/000200/2000 lies in Fort Bend: its
+    # 40 people belong to Fort Bend. Grouping by the ZCTA's county would credit Harris.
+    gq = _gq(_all_counties([
+        ("201", "000100", "2000", 100, "77001"),
+        ("201", "000300", "1000", 7, "77001"),
+        ("157", "000200", "2000", 40, "77001"),
+        ("157", "000200", "3000", 5, "77002"),
+        ("471", "000100", "2000", 250, ""),  # outside every ZCTA, still Walker's
+    ]))
+    got = county.corr_adult_by_county(gq)
+    assert got.index.tolist() == COUNTIES
+    assert got["201"] == 107 and got["157"] == 45 and got["471"] == 250
+    assert got.drop(["201", "157", "471"]).eq(0).all()  # blocks but no one: 0, not missing
+    assert got.sum() == gq.corr_adult.sum()
+
+
+def test_corr_adult_by_county_key_is_the_county_digits_not_the_state_prefix():
+    gq = _gq(_all_counties([("201", "000100", "2000", 9)]))
+    assert county.corr_adult_by_county(gq).loc["201"] == 9
+    assert all(len(k) == 3 for k in county.corr_adult_by_county(gq).index)
+
+
+def test_county_with_no_blocks_raises_not_zero():
+    gq = _gq([r for r in _all_counties([("201", "000100", "2000", 9)]) if r[0] != "455"])
+    with pytest.raises(ValueError, match="455"):
+        county.corr_adult_by_county(gq)
+
+
+def test_build_raises_when_a_county_has_no_corr_adult():
+    vd, b, ctxdf, corr, t = synth_inputs()
+    with pytest.raises(ValueError, match="407"):
+        county.build(vd, b, ctxdf, corr.drop("407"), t)
+    county.build(vd, b, ctxdf, corr * 0, t)  # all zeros is legitimate
 
 
 # ---------- ACS county rows ----------
