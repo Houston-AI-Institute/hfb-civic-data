@@ -21,3 +21,11 @@ def table(raw):
     from hfb import pipeline  # Task 5; imported lazily so collection never fails
 
     return pipeline.build_table(raw)
+
+
+@pytest.fixture(scope="session")
+def weights(raw):
+    """VTD -> ZCTA weights from the real block table, built once per session."""
+    from hfb import crosswalk
+
+    return crosswalk.vtd_weights(crosswalk.build_blocks(raw, write=False))
