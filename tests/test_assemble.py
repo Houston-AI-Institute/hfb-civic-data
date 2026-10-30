@@ -116,8 +116,7 @@ def test_out_dir_allowlist(built):
 
 def test_no_forbidden_columns(built):
     bad = [c for c in read_csv(built).columns
-           if any(f.lower() in c.lower() for f in ["NAME", "ICO", "STREET", "Spanish", "income",
-                                                   "poverty", "GEOID20", "CTBKEY"])]
+           if any(f.lower() in c.lower() for f in safeguards.FORBIDDEN_COLUMNS)]
     assert bad == []
     wb = openpyxl.load_workbook(built.out / "zcta_civic.xlsx", read_only=True)
     header = [c for c in next(wb["data"].iter_rows(min_row=2, max_row=2, values_only=True))]
@@ -137,9 +136,11 @@ def _all_text(built):
 def test_no_banned_words(built):
     for where, text in _all_text(built).items():
         low = text.lower()
-        for w in ["disengaged", "civic desert", "underperforming", "houston food bank"]:
-            assert w not in low, (where, w)
-        assert not re.search(r"\bhfb\b", low), where
+        for w in safeguards.BANNED_WORDS:
+            if w in safeguards.WHOLE_WORD:
+                assert not re.search(r"\b" + re.escape(w.lower()) + r"\b", low), (where, w)
+            else:
+                assert w.lower() not in low, (where, w)
 
 
 def test_required_lines_present(built):
@@ -381,6 +382,49 @@ def test_cli_exit_code_follows_overall(monkeypatch, tmp_path):
     assert assemble.cli(["x"]) in (0, None)
 
 
+# ---------- _tlc_year: the computation behind the TLC totals check ----------
+
+def _tlc_setup():
+    """Two VTDs in Harris (201) and Fort Bend (157); VTD 1 is split 25/50/25 with NONE."""
+    weights = pd.DataFrame([(1, "77001", 0.25), (1, "77002", 0.50), (1, "NONE", 0.25),
+                            (2, "77002", 1.0)], columns=["VTDKEY", "ZCTA", "share"])
+    vd = pd.DataFrame([(1, "2010001", 1000, 600), (2, "1570002", 200, 50),
+                       (99, "9990099", 5000, 4000)],  # VTD 99: outside the region, ignored
+                      columns=["VTDKEY", "CNTYVTD", "Voter_Registration", "Turnout"])
+    from hfb import turnout
+    alloc = turnout.allocate(weights, vd, 24)
+    t = alloc.drop(index="NONE")  # the table holds ZCTA rows only; NONE is added back by the check
+    return weights, vd, alloc, t
+
+
+def test_tlc_year_consistent_inputs_give_zero_diff():
+    weights, vd, alloc, t = _tlc_setup()
+    d = assemble._tlc_year(24, weights, vd, alloc, t)
+    assert d["max_diff"] == pytest.approx(0, abs=1e-9)
+    assert d["table_diff"] == pytest.approx(0, abs=1e-9)
+    assert (d["tlc_reg"], d["tlc_to"]) == (1200, 650)
+    assert (d["none_reg"], d["none_to"]) == pytest.approx((250, 150))
+
+
+def test_tlc_year_dropping_a_vtd_from_weights_is_caught():
+    weights, vd, _, _ = _tlc_setup()
+    from hfb import turnout
+    w = weights[weights.VTDKEY != 2]  # VTD 2's votes vanish from the allocation
+    alloc = turnout.allocate(w, vd, 24)
+    d = assemble._tlc_year(24, w, vd, alloc, alloc.drop(index="NONE"))
+    assert d["max_diff"] > assemble.TLC_TOL
+    assert d["max_diff"] == pytest.approx(200)  # all of VTD 2's registration
+
+
+def test_tlc_year_perturbed_table_value_is_caught():
+    weights, vd, alloc, t = _tlc_setup()
+    t = t.copy()
+    t.loc["77001", "reg24"] += 100
+    d = assemble._tlc_year(24, weights, vd, alloc, t)
+    assert d["max_diff"] == pytest.approx(0, abs=1e-9)  # the allocation itself is intact
+    assert d["table_diff"] == pytest.approx(100)
+
+
 # ---------- real build ----------
 
 @pytest.mark.real
@@ -399,3 +443,26 @@ def test_real_sensitivity_appendix_present(real_outputs):
     _, qa, _ = real_outputs
     text = (qa / "qa_report.md").read_text()
     assert "Spearman" in text and "Maximum absolute rank shift" in text
+
+
+@pytest.mark.real
+def test_real_region_totals_match_tlc(weights, table, raw):
+    from hfb import turnout
+    from hfb.paths import raw_path
+
+    want = {24: (3_740_459, 2_239_980), 22: (3_535_245, 1_564_982)}
+    for yy, (reg, to) in want.items():
+        vd = turnout.load_vd(raw_path(raw, f"tlc_vd{yy}"))
+        d = assemble._tlc_year(yy, weights, vd, turnout.allocate(weights, vd, yy), table)
+        assert d["tlc_reg"] == pytest.approx(reg, abs=0.5), yy
+        assert d["tlc_to"] == pytest.approx(to, abs=0.5), yy
+        assert d["max_diff"] <= 0.5 and d["table_diff"] <= 0.5, (yy, d)
+
+
+@pytest.mark.real
+def test_real_csv_cvap_adj_is_cvap_minus_corr_adult(real_outputs):
+    out, _, _ = real_outputs
+    df = pd.read_csv(out / "zcta_civic.csv", skiprows=1, dtype={"ZCTA": str, "county_main": str})
+    ok = df[["cvap", "corr_adult", "cvap_adj"]].notna().all(axis=1)
+    assert ok.sum() > 200
+    assert (df.cvap_adj[ok] == df.cvap[ok] - df.corr_adult[ok]).all()
