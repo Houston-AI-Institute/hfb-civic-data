@@ -18,7 +18,7 @@ from hfb.copy import CREDITS, MAP_FOOTER, MISUSE, USE_LIMIT
 
 from test_assemble import synth_table
 
-NOT_RANKED_BLANK = ["P1", "P1_rank", "rank_p05", "rank_p95"]
+RANK_COLS = ["P1_rank", "rank_p05", "rank_p95"]
 
 
 # ---------- synthetic geometry ----------
@@ -76,7 +76,7 @@ def test_synth_leading_zero_zcta_kept_as_text(synth):
     assert _feat(synth[4], "00501")["properties"]["ZCTA"] == "00501"
 
 
-def test_synth_not_ranked_blank_but_ranked_kept(synth):
+def test_synth_ranks_null_for_not_ranked_and_set_for_ranked(synth):
     t, _, _, _, fc = synth
     nr = t.set_index("ZCTA").not_ranked.astype(bool)
     assert nr.any() and (~nr).any()
@@ -84,17 +84,28 @@ def test_synth_not_ranked_blank_but_ranked_kept(synth):
         p = f["properties"]
         if nr[p["ZCTA"]]:
             assert p["not_ranked"] is True
-            assert all(p[c] is None for c in NOT_RANKED_BLANK), p["ZCTA"]
+            assert all(p[c] is None for c in RANK_COLS), p["ZCTA"]
         else:
             assert p["not_ranked"] is False
-            assert all(p[c] is not None for c in NOT_RANKED_BLANK), p["ZCTA"]
+            assert all(p[c] is not None for c in RANK_COLS + ["P1"]), p["ZCTA"]
 
 
-def test_synth_correctional_row_has_measured_p1_in_table_but_null_in_geojson(synth):
+def test_synth_properties_mirror_csv_frame(synth):
+    """Same values as the CSV writer's frame: measured P1 kept on a CORRECTIONAL row, P1 blank
+    exactly where the table blanks it (LAND here)."""
     t, _, _, _, fc = synth
-    row = t[t.ZCTA == "77003"].iloc[0]
-    assert bool(row.not_ranked) and row.P1 == row.P1  # measured in the table (not NaN)
-    assert _feat(fc, "77003")["properties"]["P1"] is None
+    f = assemble.format_table(t).set_index("ZCTA")
+    corr = _feat(fc, "77003")["properties"]
+    assert "CORRECTIONAL" in corr["not_ranked_reason"] and corr["P1"] == f.loc["77003", "P1"] > 0
+    assert _feat(fc, "77004")["properties"]["P1"] is None  # LAND: blanked by the pipeline
+    for feat in fc["features"]:
+        p = feat["properties"]
+        for c in assemble.COLUMNS:
+            v = f.loc[p["ZCTA"], c] if c != "ZCTA" else p["ZCTA"]
+            if pd.isna(v):
+                assert p[c] is None, (p["ZCTA"], c)
+            else:
+                assert p[c] == v, (p["ZCTA"], c)
 
 
 def test_synth_foreign_members(synth):
@@ -186,9 +197,9 @@ def test_not_ranked_feature_has_no_rank(real_map):
     nr = [f["properties"] for f in fc["features"] if f["properties"]["not_ranked"]]
     assert len(nr) == int(t.not_ranked.astype(bool).sum()) > 0
     for p in nr:
-        assert all(p[c] is None for c in NOT_RANKED_BLANK), p["ZCTA"]
+        assert all(p[c] is None for c in RANK_COLS), p["ZCTA"]
     for p in (f["properties"] for f in fc["features"] if not f["properties"]["not_ranked"]):
-        assert all(p[c] is not None for c in ["P1", "P1_rank", "rank_p05", "rank_p95"])
+        assert all(p[c] is not None for c in ["P1", *RANK_COLS])
 
 
 @pytest.mark.real
@@ -212,16 +223,29 @@ def test_png_written_nonempty(real_map):
 
 
 @pytest.mark.real
-def test_real_geojson_matches_csv_values(real_map, real_outputs):
+def test_real_geojson_properties_equal_csv_for_all_rows(real_map, real_outputs):
+    """Every property of every feature equals the CSV cell (blank cell == JSON null/empty)."""
     out, _, _ = real_outputs
-    csv = pd.read_csv(out / "zcta_civic.csv", skiprows=1, dtype={"ZCTA": str, "county_main": str})
+    csv = pd.read_csv(out / "zcta_civic.csv", skiprows=1, dtype=str, keep_default_na=False)
     fc = real_map[3]
-    gj = pd.DataFrame([f["properties"] for f in fc["features"]])
-    assert list(gj.columns) == list(csv.columns)
-    assert gj.ZCTA.tolist() == csv.ZCTA.tolist()
-    ranked = ~csv.not_ranked
-    for c in ["P1", "P1_rank", "land_share", "cvap", "civic_orgs_n"]:
-        assert np.allclose(gj.loc[ranked, c].astype(float), csv.loc[ranked, c].astype(float))
+    assert len(csv) == len(fc["features"]) == 240
+    n_kept_p1_not_ranked = 0
+    for (_, row), feat in zip(csv.iterrows(), fc["features"]):
+        p = feat["properties"]
+        assert list(p) == list(csv.columns)
+        for c in csv.columns:
+            cell, v = row[c], p[c]
+            if cell == "":
+                assert v in (None, ""), (row.ZCTA, c, v)
+            elif c == "not_ranked":
+                assert cell == ("TRUE" if v else "FALSE"), (row.ZCTA, c)
+            elif isinstance(v, str):
+                assert cell == v, (row.ZCTA, c)
+            else:
+                assert float(cell) == float(v), (row.ZCTA, c, cell, v)
+        if p["not_ranked"] and p["P1"] is not None:
+            n_kept_p1_not_ranked += 1
+    assert n_kept_p1_not_ranked > 0  # POP/GQ/CORRECTIONAL rows keep their measured P1
 
 
 @pytest.mark.real

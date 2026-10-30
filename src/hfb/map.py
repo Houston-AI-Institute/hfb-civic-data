@@ -9,9 +9,9 @@
   county shapefile in ``raw``.
 * The PNG is drawn in EPSG:3083 (Texas Centric Albers); the GeoJSON is EPSG:4326 (RFC 7946, so
   no ``crs`` member).
-* GeoJSON properties are the hand-off table columns in order (``assemble.COLUMNS``), rounded as
-  in the CSV. Unlike the CSV, P1 is also null on every NOT_RANKED row, so a map reader never
-  sees a measured value on a row the table leaves out of the ranking.
+* GeoJSON properties are the hand-off table columns in order (``assemble.COLUMNS``), taken from
+  the same frame the CSV writer uses (``assemble.format_table``), so every value mirrors the CSV:
+  blanks (NaN) become JSON null, and no blanking rule is repeated here.
 """
 
 import json
@@ -45,7 +45,6 @@ PLOT_CRS = 3083  # Texas Centric Albers
 OUT_CRS = 4326
 ZCTA_ID = "ZCTA5CE20"
 CMAP = "Blues"
-BLANK_WHEN_NOT_RANKED = ["P1", "P1_rank", "rank_p05", "rank_p95"]
 COORD_GRID = 1e-6  # degrees, about 0.1 m
 
 
@@ -119,9 +118,6 @@ def build_geojson(table: pd.DataFrame, zcta: gpd.GeoDataFrame) -> dict:
     features = []
     for rec in f.to_dict("records"):
         props = {c: assemble._cell(rec[c]) for c in assemble.COLUMNS}
-        if props["not_ranked"]:
-            for c in BLANK_WHEN_NOT_RANKED:
-                props[c] = None
         features.append({"type": "Feature", "properties": props,
                          "geometry": _geometry(geoms[props["ZCTA"]])})
     return {"type": "FeatureCollection",
