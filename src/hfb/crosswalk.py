@@ -21,6 +21,7 @@ import pandas as pd
 import pyogrio
 
 from .config import COUNTIES
+from .paths import raw_path as _path
 
 log = logging.getLogger(__name__)
 
@@ -28,15 +29,6 @@ NONE = "NONE"
 BLOCK_COLUMNS = [
     "GEOID20", "VTDKEY", "ZCTA", "total", "vap", "gq", "corr_adult", "college", "ALAND20",
 ]
-
-
-def _path(raw: Path, key: str) -> Path:
-    """Path of a fetched source, looked up in the manifest (path is relative to raw)."""
-    with open(Path(raw) / "manifest.csv", newline="") as f:
-        for row in csv.DictReader(f):
-            if row["key"] == key:
-                return Path(raw) / row["path"]
-    raise KeyError(f"{key!r} not in {Path(raw) / 'manifest.csv'}")
 
 
 def zcta_from_faces(joined: pd.Series) -> pd.Series:

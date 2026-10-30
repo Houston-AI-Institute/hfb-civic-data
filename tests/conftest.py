@@ -24,8 +24,16 @@ def table(raw):
 
 
 @pytest.fixture(scope="session")
-def weights(raw):
+def weights(blocks):
     """VTD -> ZCTA weights from the real block table, built once per session."""
     from hfb import crosswalk
 
-    return crosswalk.vtd_weights(crosswalk.build_blocks(raw, write=False))
+    return crosswalk.vtd_weights(blocks)
+
+
+@pytest.fixture(scope="session")
+def blocks(raw):
+    """2020 block table for the region, built once per session."""
+    from hfb import crosswalk
+
+    return crosswalk.build_blocks(raw, write=False)
