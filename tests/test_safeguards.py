@@ -219,6 +219,22 @@ def test_read_me_missing_required_string(good, needed):
     assert len(fails) == 1 and needed[:30] in fails[0]
 
 
+def test_not_ranked_row_with_p1_fails(tmp_path):
+    cols = ["ZCTA", "P1", "P1_rank", "rank_p05", "rank_p95", "not_ranked",
+            "P1_unranked_reference"]
+    p = tmp_path / "a.csv"
+    ok = [["77001", "0.5", "50.0", "40.0", "60.0", "FALSE", ""],
+          ["77002", "", "", "", "", "TRUE", "0.9"]]
+    _write_csv(p, [MISUSE], cols, ok)
+    assert sg.check_not_ranked_blank(p) == []
+    _write_csv(p, [MISUSE], cols, [ok[0], ["77002", "0.9", "", "", "", "TRUE", ""]])
+    fails = sg.check_not_ranked_blank(p)
+    assert len(fails) == 1 and "P1" in fails[0]
+    _write_csv(p, [MISUSE], cols, [["77001", "0.5", "50.0", "40.0", "60.0", "FALSE", "0.5"]])
+    fails = sg.check_not_ranked_blank(p)
+    assert len(fails) == 1 and "P1_unranked_reference" in fails[0]
+
+
 def test_blank_rank_on_ranked_row(tmp_path):
     cols = ["ZCTA", "P1_rank", "rank_p05", "rank_p95", "not_ranked"]
     p = tmp_path / "a.csv"

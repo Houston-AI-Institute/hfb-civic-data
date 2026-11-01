@@ -33,7 +33,7 @@ def test_readme_caution_counts_match_table(table):
 
 @pytest.mark.real
 def test_readme_p1_above_one_claim(table):
-    """README: P1 is above 1 for 5 rows, all not ranked."""
-    assert "P1 is above 1 for 5 rows. All 5 are not ranked" in README.read_text()
+    """README: measured P1 is above 1 for 5 rows, all not ranked."""
+    assert "Measured P1 is above 1 for 5 rows, all of them not ranked" in README.read_text()
     high = table[table.P1 > 1]
     assert len(high) == 5 and high.not_ranked.astype(bool).all()

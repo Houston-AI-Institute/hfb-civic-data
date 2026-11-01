@@ -13,7 +13,8 @@ from typing import Iterable, Mapping
 import openpyxl
 import pandas as pd
 
-from .copy import CREDITS, MISUSE, P1_FOOTNOTE, RANK_DIRECTION, REQUIRED_LINES, USE_LIMIT
+from .copy import (CONDITIONS_NOTE, CREDITS, MISUSE, P1_FOOTNOTE, RANK_DIRECTION,
+                   REQUIRED_LINES, USE_LIMIT)
 
 BANNED_WORDS = ("disengaged", "civic desert", "underperforming", "Houston Food Bank", "HFB")
 WHOLE_WORD = {"HFB"}  # matched as a whole word only; the rest as substrings
@@ -100,7 +101,9 @@ def _read(path) -> pd.DataFrame:
 
 
 def check_not_ranked_blank(path) -> list[str]:
-    """NOT_RANKED rows have blank P1_rank, rank_p05 and rank_p95 (ranked rows do not)."""
+    """NOT_RANKED rows have blank P1_rank, rank_p05 and rank_p95 (ranked rows do not). Where
+    the columns exist, NOT_RANKED rows have a blank P1 and ranked rows a blank
+    P1_unranked_reference."""
     df = _read(path)
     nr = df.not_ranked == "TRUE"
     bad = df.ZCTA[nr & (df[list(RANK_COLS)] != "").any(axis=1)].tolist()
@@ -110,6 +113,11 @@ def check_not_ranked_blank(path) -> list[str]:
         fails.append(f"NOT_RANKED rows with a rank value: {bad[:10]}")
     if miss:
         fails.append(f"ranked rows with a blank rank value: {miss[:10]}")
+    if "P1" in df and (nr & (df.P1 != "")).any():
+        fails.append(f"NOT_RANKED rows with a P1 value: {df.ZCTA[nr & (df.P1 != '')].tolist()[:10]}")
+    ref = "P1_unranked_reference"
+    if ref in df and (~nr & (df[ref] != "")).any():
+        fails.append(f"ranked rows with a {ref} value: {df.ZCTA[~nr & (df[ref] != '')].tolist()[:10]}")
     return fails
 
 
@@ -125,7 +133,8 @@ def check_read_me(wb) -> list[str]:
     if "read_me" not in wb.sheetnames:
         return ["xlsx has no read_me sheet"]
     cells = {str(c.value) for row in wb["read_me"].iter_rows() for c in row if c.value}
-    need = (MISUSE, USE_LIMIT, *REQUIRED_LINES, RANK_DIRECTION, P1_FOOTNOTE, *CREDITS, DATA_STARTS)
+    need = (MISUSE, USE_LIMIT, *REQUIRED_LINES, RANK_DIRECTION, P1_FOOTNOTE, CONDITIONS_NOTE,
+            *CREDITS, DATA_STARTS)
     return [f"read_me lacks: {s[:50]!r}" for s in need if s not in cells]
 
 

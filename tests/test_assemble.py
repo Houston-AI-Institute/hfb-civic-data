@@ -27,11 +27,12 @@ CTX = ["same_house_1yr", "owner_occupied", "hs_diploma_25plus", "not_limited_eng
 SIDE = [x for k in CTX for x in (k, f"{k}_moe")] + ["civic_orgs_n", "civic_orgs_band",
                                                      "hoa_like_n"]
 BASE_COLS = COLS  # the 24 columns frozen at the gate snapshot
-COLS = BASE_COLS + SIDE
+TAIL = ["county_label", "P1_unranked_reference"]  # added 1 Nov, after the side columns
+COLS = BASE_COLS + SIDE + TAIL
 INT_COLS = ["acs_pop", "reg22", "to22", "reg24", "to24", "cvap", "cvap_moe", "corr_adult",
             "cvap_adj", "civic_orgs_n", "hoa_like_n"]
 DP4 = ["land_share", "inreg_share20", "to_reg24", "P1", "split_exposure", "gq_share",
-       "college_share", *SIDE[:10]]
+       "college_share", *SIDE[:10], "P1_unranked_reference"]
 DP1 = ["P1_rank", "rank_p05", "rank_p95"]
 
 
@@ -249,6 +250,34 @@ def test_format_table_sorts_and_types():
     assert (f.P1_rank.dropna().round(1) == f.P1_rank.dropna()).all()
 
 
+def test_format_table_moves_p1_off_not_ranked_rows():
+    """Grey rows never show P1; the measured value sits in P1_unranked_reference instead."""
+    t = synth_table()
+    f = assemble.format_table(t).set_index("ZCTA")
+    nr = f.not_ranked
+    assert nr.any() and (~nr).any()
+    assert f.P1[nr].isna().all()
+    assert f.P1_unranked_reference[~nr].isna().all()
+    assert f.P1[~nr].notna().all()
+    measured = t.P1.round(4)
+    assert f.loc["77003", "P1_unranked_reference"] == measured["77003"] > 1  # CORRECTIONAL
+    assert pd.isna(f.loc["77004", "P1_unranked_reference"])  # LAND: never measured
+    assert t.loc["77003", "P1"] > 1  # the internal table keeps the measured value
+
+
+def test_format_table_adds_county_label():
+    f = assemble.format_table(synth_table()).set_index("ZCTA")
+    assert f.loc["00501", "county_label"] == "Brazoria"
+    assert (f.drop(index="00501").county_label == "Harris").all()
+
+
+def test_format_table_rejects_unknown_county():
+    t = synth_table()
+    t.loc["77001", "county_main"] = "48999"
+    with pytest.raises(ValueError, match="county"):
+        assemble.format_table(t)
+
+
 def test_nan_count_stays_blank_not_zero():
     t = synth_table()
     t.loc["77001", "cvap"] = np.nan
@@ -398,7 +427,9 @@ SIDE_QA = dict(irs_total_active=1234, civic_region=550, hoa_like_region=400, ove
 
 def test_new_column_names_pass_forbidden_scan():
     assert safeguards.check_forbidden_columns(SIDE) == []
-    assert len(SIDE) == 13 and assemble.COLUMNS[-13:] == SIDE
+    assert safeguards.check_forbidden_columns(TAIL) == []
+    assert len(SIDE) == 13 and assemble.COLUMNS[24:37] == SIDE
+    assert assemble.COLUMNS[37:] == TAIL
     assert assemble.COLUMNS[:24] == BASE_COLS
 
 
@@ -468,7 +499,13 @@ def test_existing_columns_equal_gate_snapshot(real_outputs):
     assert list(old.columns) == BASE_COLS
     assert list(new.columns[:24]) == BASE_COLS
     assert len(new) == len(old)
-    assert new[BASE_COLS].equals(old)  # exact string equality per cell
+    # 1 Nov: P1 on not-ranked rows moved to P1_unranked_reference (Seth's decision). Put it
+    # back, then every cell of the 24 frozen columns must match the snapshot exactly.
+    nr = new.not_ranked == "TRUE"
+    assert (new.P1[nr] == "").all() and (new.P1_unranked_reference[~nr] == "").all()
+    back = new[BASE_COLS].copy()
+    back.loc[nr, "P1"] = new.P1_unranked_reference[nr]
+    assert back.equals(old)  # exact string equality per cell
 
 
 def test_cli_exit_code_follows_overall(monkeypatch, tmp_path):

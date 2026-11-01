@@ -96,7 +96,12 @@ def test_copy_constants():
     )
     assert copy_mod.MAP_FOOTER == (
         "Not for decisions about food distribution, eligibility, pantry siting or any individual."
-        " For the food bank's hand-off only; use county views in recorded talks."
+        " For team folders and the food bank. Not for slides, posts or public repos."
+    )
+    assert copy_mod.CONDITIONS_NOTE == (
+        "Keep the five neighbourhood conditions out of any score. They track schooling and "
+        "language closely, so a score built on them would describe who lives in an area, not "
+        "how it takes part. Use them only to explain a place."
     )
     assert copy_mod.CREDITS == (
         "Texas Legislative Council, Capitol Data Portal "

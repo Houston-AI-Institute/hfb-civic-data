@@ -89,5 +89,5 @@ for _t in ACS_TABLES:
     SEED[f"acs_{_t}"] = f"gaps/acs_{_t}/{_t}.dat"
 
 # ZCTAs whose corr_adult may be immigration detention rather than prison; flagged
-# CAUTION FACILITY_CHECK until the facility type is checked (77032 = Houston IAH area).
+# CAUTION FACILITY_CHECK until the facility type is checked.
 FACILITY_CHECK: set[str] = {"77032"}

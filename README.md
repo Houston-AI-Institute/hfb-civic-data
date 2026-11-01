@@ -20,7 +20,7 @@ A low score is not low interest.
 | Ranked | 175 of 240 ZCTAs. The other 65 are shown but not ranked (see "Why some rows are not ranked"). They hold about 4 percent of the region's registered voters. |
 | Intended use | Planning where to listen first: focus groups and outreach conversations. |
 | Not intended for | Food distribution, eligibility, pantry siting, decisions about any person, or planning voter registration or turnout drives. |
-| Built | 30 October 2026, from saved copies of the public source files. |
+| Built | 1 November 2026, from saved copies of the public source files (downloaded 30 October). |
 | License | Code: MIT (see `LICENSE`). Tables built by this code: CC BY 4.0, crediting the Texas Legislative Council as in "Credits". Census and IRS inputs are U.S. government works. |
 
 ## Files
@@ -31,9 +31,13 @@ A low score is not low interest.
 | `county_civic.csv` | One row per county (10 rows). Same layout as the ZCTA CSV: use statement on row 1, column names on row 2. |
 | `zcta_civic.csv` | The same table. Row 1 holds the use statement; the column names are on row 2. In Python use `pd.read_csv(path, skiprows=1, dtype={"ZCTA": str, "county_main": str})` so ZIP codes keep their leading digits. |
 | `zcta_civic.geojson` | ZCTA shapes (EPSG:4326) with the same columns as properties, plus `use_limit` and `credits` at the top level. |
-| `zcta_p1_map.png` | P1 in five equal-count classes over ranked ZCTAs; not-ranked ZCTAs in grey; county outlines. For the food bank's hand-off only; use county views in recorded talks. |
+| `zcta_p1_map.png` | P1 in five equal-count classes over ranked ZCTAs; not-ranked ZCTAs in grey; county outlines. For team folders and the food bank. Not for slides, posts or public repos. |
 
-Column definitions live in the `read_me` sheet. This file explains how the table was built and where it is weak.
+Column definitions live in the `read_me` sheet. This file explains how the table was built and where it is weak. `county_label` gives the county name for `county_main`.
+
+A starter notebook, [`starter/starter.ipynb`](starter/starter.ipynb), loads these files with the right types and builds an example score on ranked rows only.
+
+The method and sources are public so anyone can check them. HAI and the food bank do not publish or present a ranked or named list of ZIP areas. Shortlists made from this table are working files for the food bank, not public findings.
 
 The built files are not stored in this repository. They go to the food bank and to hackathon teams with the use statement above. Anyone can rebuild them from the public sources (see "Rebuilding").
 
@@ -52,7 +56,9 @@ Step by step:
 5. **Rank.** P1 is turned into a percentile rank from 0 to 100 among ranked ZCTAs.
 6. **Rank interval.** `cvap` is a survey estimate, so the rank is recomputed 1,000 times with `cvap` drawn from within its margin of error. `rank_p05` and `rank_p95` are the 5th and 95th percentiles of those ranks. The median width of this interval is about 15 rank points. Two ZCTAs whose intervals overlap should not be read as different. The interval covers only survey error in `cvap`. It leaves out error from sharing voting districts out to ZCTAs, so it is too narrow for `SPLIT` rows: an independent check that added that error widened their median interval from about 21 to about 26 rank points.
 
-P1 is above 1 for 5 rows. All 5 are not ranked because their populations are very small, and the adult-citizen estimate there is too small to trust. The values are kept as measured. `GROWTH` is a separate flag: it marks rows where 2024 registration is above 1.1 times the 2020 voting-age population, and the ranked GROWTH rows have ordinary P1 values.
+In the files, `P1` is blank on every not-ranked row, so sorting or scoring on `P1` only ever uses ranked rows. Where P1 can still be measured on a not-ranked row (POP, GQ, CORRECTIONAL), the value is in `P1_unranked_reference`, for reference only.
+
+Measured P1 is above 1 for 5 rows, all of them not ranked because their populations are very small, and the adult-citizen estimate there is too small to trust. The values are kept as measured in `P1_unranked_reference`. `GROWTH` is a separate flag: it marks rows where 2024 registration is above 1.1 times the 2020 voting-age population, and the ranked GROWTH rows have ordinary P1 values.
 
 ## Why some rows are not ranked
 
@@ -67,7 +73,7 @@ A row is not ranked when the measure would mislead for that area. `not_ranked_re
 | GQ | More than half of residents live in group quarters (dorms, jails, nursing homes) | 2 |
 | CORRECTIONAL | People in adult correctional facilities are 10 percent or more of voting-age residents | 4 |
 
-Rows overlap, so the counts add to more than 65. P1 is left blank for LAND, PARTIAL and NO_CVAP, because the turnout or the adult count describes a different area from the ZCTA. For POP, GQ and CORRECTIONAL the measured P1 is kept for reference but not ranked.
+Rows overlap, so the counts add to more than 65. P1 is left blank for LAND, PARTIAL and NO_CVAP, because the turnout or the adult count describes a different area from the ZCTA. For POP, GQ and CORRECTIONAL the measured P1 is kept for reference in `P1_unranked_reference`, and `P1` itself is blank.
 
 **Partial ZCTAs.** A ZIP area can cross the region's edge. The table counts only the part inside the region, so a ZCTA that is mostly outside it would be compared on a fraction of its people. Those rows are PARTIAL or LAND.
 
@@ -124,7 +130,7 @@ The Census counts people in adult correctional facilities where they are held. M
 Two limits:
 
 - Jails hold people awaiting trial, and many of them are eligible to vote. Subtracting them treats them as not eligible. In the few ZCTAs with a large jail this understates the eligible population.
-- Immigration detention is counted with correctional facilities, and people held there are mostly not citizens. They may not be in `cvap` at all, so subtracting them can remove people twice. ZCTA 77032 (near the Houston airport) carries `FACILITY_CHECK` until the facility type is confirmed.
+- Immigration detention is counted with correctional facilities, and people held there are mostly not citizens. They may not be in `cvap` at all, so subtracting them can remove people twice. One ZCTA carries `FACILITY_CHECK` until the facility type is confirmed.
 
 ## Civic organizations
 
@@ -141,7 +147,7 @@ Limits, in order of size:
 
 ## Neighbourhood conditions
 
-Five context columns come from the ACS 2020-2024 five-year estimates, each with a 90 percent margin of error: same house as one year ago, owner-occupied housing, high school diploma or above, households that are not limited English speaking, and households with broadband. They are context only and are not used in P1 or the rank. Each is blank for 5 or 6 ZCTAs where the survey has no usable estimate.
+Five context columns come from the ACS 2020-2024 five-year estimates, each with a 90 percent margin of error: same house as one year ago, owner-occupied housing, high school diploma or above, households that are not limited English speaking, and households with broadband. They are context only and are not used in P1 or the rank. Keep the five neighbourhood conditions out of any score. They track schooling and language closely, so a score built on them would describe who lives in an area, not how it takes part. Use them only to explain a place. Each is blank for 5 or 6 ZCTAs where the survey has no usable estimate.
 
 ## Language
 

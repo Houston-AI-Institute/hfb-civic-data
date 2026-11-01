@@ -22,8 +22,9 @@ import pandas as pd
 from openpyxl.styles import Alignment, Font, PatternFill
 
 from . import context, county, crosswalk, flags, pipeline, safeguards, score, turnout
-from .config import COUNTIES
-from .copy import CREDITS, MISUSE, P1_FOOTNOTE, RANK_DIRECTION, REQUIRED_LINES, USE_LIMIT
+from .config import COUNTIES, COUNTY_NAMES
+from .copy import (CONDITIONS_NOTE, CREDITS, MISUSE, P1_FOOTNOTE, RANK_DIRECTION,
+                   REQUIRED_LINES, USE_LIMIT)
 from .paths import raw_path
 
 log = logging.getLogger(__name__)
@@ -34,11 +35,12 @@ COLUMNS = [
     "P1_rank", "rank_p05", "rank_p95", "not_ranked", "not_ranked_reason", "caution",
     "split_exposure", "gq_share", "college_share",
     *context.CONTEXT_COLS, "civic_orgs_n", "civic_orgs_band", "hoa_like_n",
+    "county_label", "P1_unranked_reference",
 ]
 INT_COLS = ["acs_pop", "reg22", "to22", "reg24", "to24", "cvap", "cvap_moe", "corr_adult",
             "cvap_adj", "civic_orgs_n", "hoa_like_n"]
 DP4_COLS = ["land_share", "inreg_share20", "to_reg24", "P1", "split_exposure", "gq_share",
-            "college_share", *context.CONTEXT_COLS]
+            "college_share", *context.CONTEXT_COLS, "P1_unranked_reference"]
 DP1_COLS = ["P1_rank", "rank_p05", "rank_p95"]
 TEXT_COLS = ["ZCTA", "county_main"]
 
@@ -81,8 +83,9 @@ COLUMN_DEFS = {
                 "be measured (flag NO_CVAP).",
     "P1": "Average of 2022 and 2024 general-election turnout divided by cvap_adj, that is "
           "(to22 + to24) / (2 * cvap_adj). A reference measure, not a score of a community. "
-          "Above 1 is kept as measured. Blank where not_ranked_reason has LAND, PARTIAL or "
-          "NO_CVAP.",
+          "Blank on every NOT_RANKED row, so sorting or scoring on P1 only ever uses ranked "
+          "rows. For POP, GQ and CORRECTIONAL rows the measured value is in "
+          "P1_unranked_reference.",
     "P1_rank": "Percentile rank of P1 among ranked ZCTAs, 0 to 100; 100 = highest. "
                "Blank for NOT_RANKED rows.",
     "rank_p05": "5th percentile of P1_rank over 1,000 simulated draws of the ACS sampling "
@@ -108,6 +111,12 @@ COLUMN_DEFS = {
         "of voting-age population); "
         f"EDGE (inreg_share20 from {flags.PARTIAL_MIN} to {flags.EDGE_MAX}); "
         "FACILITY_CHECK (corr_adult may be a detention facility; type not yet checked)."),
+    "county_label": "Short name of the county in county_main, for example Harris.",
+    "P1_unranked_reference": (
+        "P1 as measured on a NOT_RANKED row, kept for reference only. Never sort, rank or "
+        "score on it: these areas are too small, or mostly group quarters or correctional "
+        "facilities, for the measure to be trusted. Above 1 is kept as measured. Blank on "
+        "ranked rows and where not_ranked_reason has LAND, PARTIAL or NO_CVAP."),
     "split_exposure": "Share of the ZCTA's allocated 2024 registration that comes from voting "
                       "districts only partly inside it (district weight in the ZCTA between "
                       "0.10 and 0.90).",
@@ -168,7 +177,20 @@ COLUMN_DEFS = {
 # ---------- formatting and writers ----------
 
 def format_table(t: pd.DataFrame) -> pd.DataFrame:
-    """Briefed columns and order, integers as nullable Int64, rounded, sorted not_ranked then ZCTA."""
+    """Briefed columns and order, integers as nullable Int64, rounded, sorted not_ranked then ZCTA.
+
+    Adds ``county_label`` (raises ValueError for a county outside the region) and moves P1 off
+    NOT_RANKED rows into ``P1_unranked_reference``; ``t`` itself keeps the measured P1.
+    """
+    t = t.copy()
+    label = t.county_main.astype(str).str[2:].map(COUNTY_NAMES)
+    if label.isna().any():
+        bad = sorted(set(t.county_main[label.isna()].astype(str)))
+        raise ValueError(f"county_main outside the region county list: {bad}")
+    t["county_label"] = label
+    nr = t.not_ranked.astype(bool)
+    t["P1_unranked_reference"] = t.P1.where(nr)
+    t["P1"] = t.P1.where(~nr)
     f = t[COLUMNS].copy()
     for c in INT_COLS:
         f[c] = f[c].round().astype("Int64")
@@ -198,7 +220,8 @@ def _cell(v):
 def _read_me_rows(with_county: bool = False) -> list[tuple]:
     rows = [("Use statement", MISUSE), ("Use limit", USE_LIMIT)]
     rows += [("Required line", s) for s in REQUIRED_LINES]
-    rows += [("Rank direction", RANK_DIRECTION), ("P1", P1_FOOTNOTE)]
+    rows += [("Rank direction", RANK_DIRECTION), ("P1", P1_FOOTNOTE),
+             ("Conditions", CONDITIONS_NOTE)]
     rows += [("Credits", s) for s in CREDITS]
     rows += [("Layout", "Data starts on row 2"),
              ("", "Row 1 holds the use statement; row 2 is the column header and the table "
