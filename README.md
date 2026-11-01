@@ -20,7 +20,7 @@ A low score is not low interest.
 | Ranked | 175 of 240 ZCTAs. The other 65 are shown but not ranked (see "Why some rows are not ranked"). They hold about 4 percent of the region's registered voters. |
 | Intended use | Planning where to listen first: focus groups and outreach conversations. |
 | Not intended for | Food distribution, eligibility, pantry siting, decisions about any person, or planning voter registration or turnout drives. |
-| Built | 30 October 2026, from public files downloaded that day. |
+| Built | 30 October 2026, from saved copies of the public source files. |
 | License | Code: MIT (see `LICENSE`). Tables built by this code: CC BY 4.0, crediting the Texas Legislative Council as in "Credits". Census and IRS inputs are U.S. government works. |
 
 ## Files
@@ -52,7 +52,7 @@ Step by step:
 5. **Rank.** P1 is turned into a percentile rank from 0 to 100 among ranked ZCTAs.
 6. **Rank interval.** `cvap` is a survey estimate, so the rank is recomputed 1,000 times with `cvap` drawn from within its margin of error. `rank_p05` and `rank_p95` are the 5th and 95th percentiles of those ranks. The median width of this interval is about 15 rank points. Two ZCTAs whose intervals overlap should not be read as different. The interval covers only survey error in `cvap`. It leaves out error from sharing voting districts out to ZCTAs, so it is too narrow for `SPLIT` rows: an independent check that added that error widened their median interval from about 21 to about 26 rank points.
 
-P1 is above 1 for 5 rows. All 5 are not ranked because their populations are very small, and the adult-citizen estimate there is too small to trust. The values are kept as measured. `GROWTH` is a separate flag: it marks rows where 2024 registration is above 1.1 times the 2020 voting-age population, and those rows have ordinary P1 values.
+P1 is above 1 for 5 rows. All 5 are not ranked because their populations are very small, and the adult-citizen estimate there is too small to trust. The values are kept as measured. `GROWTH` is a separate flag: it marks rows where 2024 registration is above 1.1 times the 2020 voting-age population, and the ranked GROWTH rows have ordinary P1 values.
 
 ## Why some rows are not ranked
 
@@ -105,7 +105,7 @@ In Walker County about 15,000 people live in adult correctional facilities (2020
 
 ## Caution flags
 
-`caution` marks rows to read with care, ranked or not. The counts below show both; most codes on not-ranked rows repeat why they are not ranked.
+`caution` marks rows to read with care, ranked or not. The counts below show both. On not-ranked rows the codes are for reference only.
 
 | Code | Meaning | Ranked rows | All rows |
 |---|---|---|---|
@@ -176,7 +176,7 @@ Requires Python and [uv](https://docs.astral.sh/uv/).
 uv run python -m hfb.build data/raw
 ```
 
-This downloads every source file into `data/raw`, then writes `out/` and an internal QA report in `qa/`. The download path is covered by tests with mocked downloads but has not yet been run end to end against the live sources: the 30 October build used saved copies of the same public files. If a download fails, please open an issue.
+This downloads every source file into `data/raw`, then writes `out/` and an internal QA report in `qa/`. The download path is covered by tests that fetch from local files but has not yet been run end to end against the live sources: the 30 October build used saved copies of the same public files. If a download fails, please open an issue.
 
 To rebuild from a `data/raw` that a previous build already filled, without network access:
 
