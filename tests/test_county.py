@@ -17,7 +17,7 @@ from test_acs import COLS as ACS_COLS
 from test_acs import write_dat
 from test_assemble import synth_ctx, synth_table
 
-from hfb import acs, assemble, context, county, safeguards
+from hfb import acs, assemble, context, county, flags, safeguards
 from hfb.config import COUNTIES
 from hfb.copy import MISUSE
 from hfb.paths import raw_path
@@ -162,8 +162,9 @@ def test_county_zcta_counts_and_orgs_from_table_synthetic(synth_county):
     assert c.loc["48201", "zctas_total"] == 5 and c.loc["48039", "zctas_total"] == 1
     ranked = ~t.not_ranked.astype(bool)
     assert c.loc["48201", "zctas_ranked"] == int((ranked & (t.county_main == "48201")).sum())
+    mostly_in = t.land_share >= flags.LAND_MIN
     assert c.loc["48201", "civic_orgs_main"] == int(
-        t.civic_orgs_n[t.county_main == "48201"].sum())
+        t.civic_orgs_n[(t.county_main == "48201") & mostly_in].sum())
     reg = t.reg24[t.county_main == "48201"]
     assert c.loc["48201", "reg24_share_ranked"] == pytest.approx(
         reg[ranked[reg.index]].sum() / reg.sum(), abs=5e-5)
@@ -171,11 +172,21 @@ def test_county_zcta_counts_and_orgs_from_table_synthetic(synth_county):
     assert pd.isna(c.loc["48015", "reg24_share_ranked"])
 
 
+def test_county_orgs_skip_zctas_mostly_outside_the_region(synth_county):
+    """A LAND row (under half its land in the region) adds nothing to civic_orgs_main."""
+    c, t = synth_county
+    land = t[(t.county_main == "48201") & (t.land_share < flags.LAND_MIN)]
+    assert len(land) and land.civic_orgs_n.sum() > 0  # the fixture has one to exclude
+    got = c.set_index("county_fips").loc["48201", "civic_orgs_main"]
+    assert got == int(t.civic_orgs_n[t.county_main == "48201"].sum() - land.civic_orgs_n.sum())
+
+
 @pytest.mark.real
 def test_county_real_sanity(county_real, table, raw):
     c = county_real.set_index("county_fips")
     assert c.zctas_total.sum() == 240 and c.zctas_ranked.sum() == int((~table.not_ranked).sum())
-    assert c.civic_orgs_main.sum() == int(table.civic_orgs_n.sum())
+    assert c.civic_orgs_main.sum() == int(
+        table.civic_orgs_n[table.land_share >= flags.LAND_MIN].sum())
     # the rural counties the food bank asked about hold only part of their voters in ranked ZCTAs
     for f in ("48471", "48291", "48407"):
         assert 0.4 < c.loc[f, "reg24_share_ranked"] < 0.7, f
@@ -322,7 +333,7 @@ def test_read_me_defines_every_county_column(cb):
     defined = {r[0]: r[1] for r in block[1:] if r[0] and r[1]}
     assert set(EXPECTED_COLUMNS) <= set(defined)
     assert all(len(defined[c]) > 10 for c in EXPECTED_COLUMNS)
-    assert "mailing ZIP" in defined["civic_orgs_main"] and "most of its land" in defined[
+    assert "mailing ZIP" in defined["civic_orgs_main"] and "most of its in-region land" in defined[
         "civic_orgs_main"]
     assert all("—" not in str(v) and "–" not in str(v) for r in rows for v in r if v)
     assert re.search(r"no rank", " ".join(str(v) for r in block for v in r if v), re.I)

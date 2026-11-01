@@ -2,7 +2,7 @@
 
 **Not for decisions about food distribution, eligibility, pantry siting or any individual.**
 
-This table does not choose where to run voter registration or GOTV; that is the food bank's decision with its counsel. Until then it supports a listening shortlist only.
+This table is for choosing where to listen first. It is not for planning voter registration or turnout drives.
 
 Missing data is not missing civic life.
 
@@ -14,12 +14,12 @@ A low score is not low interest.
 |---|---|
 | What it is | One row per ZIP Code Tabulation Area (ZCTA) that touches the food bank's 10-county service region: 240 rows. |
 | Counties | Austin, Brazoria, Chambers, Fort Bend, Harris, Liberty, San Jacinto, Trinity, Walker, Waller. |
-| What it measures | Voter turnout in the 2022 and 2024 general elections compared with the number of adult citizens (P1), plus a count of civic organizations and six neighbourhood conditions from the Census. |
+| What it measures | Voter turnout in the 2022 and 2024 general elections compared with the number of adult citizens (P1), plus a count of civic organizations and five neighbourhood conditions from the Census. |
 | Unit | Areas, never people. No individual voter records, names or addresses were used or are included. |
 | Nonpartisan | Turnout counts only. No party, candidate or vote-choice data. |
 | Ranked | 175 of 240 ZCTAs. The other 65 are shown but not ranked (see "Why some rows are not ranked"). They hold about 4 percent of the region's registered voters. |
 | Intended use | Planning where to listen first: focus groups and outreach conversations. |
-| Not intended for | Food distribution, eligibility, pantry siting, decisions about any person, or choosing where to run voter registration or GOTV. |
+| Not intended for | Food distribution, eligibility, pantry siting, decisions about any person, or planning voter registration or turnout drives. |
 | Built | 30 October 2026, from public files downloaded that day. |
 | License | Code: MIT (see `LICENSE`). Tables built by this code: CC BY 4.0, crediting the Texas Legislative Council as in "Credits". Census and IRS inputs are U.S. government works. |
 
@@ -50,9 +50,9 @@ Step by step:
 3. **Correctional adjustment.** People held in adult correctional facilities in the 2020 Census (`corr_adult`) are subtracted from `cvap`. See "People in jails and detention".
 4. **P1** = (to22 + to24) / (2 × cvap_adj).
 5. **Rank.** P1 is turned into a percentile rank from 0 to 100 among ranked ZCTAs.
-6. **Rank interval.** `cvap` is a survey estimate, so the rank is recomputed 1,000 times with `cvap` drawn from within its margin of error. `rank_p05` and `rank_p95` are the 5th and 95th percentiles of those ranks. The median width of this interval is about 15 rank points. Two ZCTAs whose intervals overlap should not be read as different.
+6. **Rank interval.** `cvap` is a survey estimate, so the rank is recomputed 1,000 times with `cvap` drawn from within its margin of error. `rank_p05` and `rank_p95` are the 5th and 95th percentiles of those ranks. The median width of this interval is about 15 rank points. Two ZCTAs whose intervals overlap should not be read as different. The interval covers only survey error in `cvap`. It leaves out error from sharing voting districts out to ZCTAs, so it is too narrow for `SPLIT` rows: an independent check that added that error widened their median interval from about 21 to about 26 rank points.
 
-P1 can come out above 1 in fast-growing areas, where 2024 voters outnumber the older survey estimate of adults. Those values are kept as measured and flagged `GROWTH`.
+P1 is above 1 for 5 rows. All 5 are not ranked because their populations are very small, and the adult-citizen estimate there is too small to trust. The values are kept as measured. `GROWTH` is a separate flag: it marks rows where 2024 registration is above 1.1 times the 2020 voting-age population, and those rows have ordinary P1 values.
 
 ## Why some rows are not ranked
 
@@ -88,7 +88,7 @@ Rows overlap, so the counts add to more than 65. P1 is left blank for LAND, PART
 | Liberty | 3 of 12 | 55% |
 | Walker | 1 of 10 | 47% |
 
-Counties are assigned by `county_main`, the county holding most of each ZCTA's land. In the rural counties most ZIP areas are small or cross county lines, so few are ranked. For Walker, Liberty and San Jacinto, a ZCTA ranking does not describe most of the county; use the county table there.
+Counties are assigned by `county_main`, the region county holding most of each ZCTA's in-region land. A ZCTA mostly outside the region still gets a region county. In the rural counties most ZIP areas are small or cross county lines, so few are ranked. For Walker, Liberty and San Jacinto, a ZCTA ranking does not describe most of the county; use the county table there.
 
 ## County table
 
@@ -98,24 +98,24 @@ Counties are assigned by `county_main`, the county holding most of each ZCTA's l
 - `cvap` and the five neighbourhood conditions are the ACS county estimates, with margins of error. County estimates rest on much larger samples than ZIP estimates.
 - `P1` uses the same formula as the ZCTA table. `P1_low` and `P1_high` show P1 with `cvap` moved to the top and bottom of its margin of error.
 - `zctas_ranked`, `zctas_total` and `reg24_share_ranked` show how much of the county the ZCTA ranking covers.
-- `civic_orgs_main` adds up `civic_orgs_n` over ZCTAs whose `county_main` is the county, so it carries the same mailing ZIP limits.
+- `civic_orgs_main` adds up `civic_orgs_n` over ZCTAs whose `county_main` is the county, leaving out ZCTAs with less than half their land in the region. It carries the same mailing ZIP limits.
 - Counties are not ranked. Ten rows are too few for a rank to mean much, and a ranking of counties invites a league table.
 
 In Walker County about 15,000 people live in adult correctional facilities (2020 Census). They are subtracted before P1 is computed, which is why its `cvap_adj` is much lower than `cvap`.
 
 ## Caution flags
 
-`caution` marks ranked rows to read with care:
+`caution` marks rows to read with care, ranked or not. The counts below show both; most codes on not-ranked rows repeat why they are not ranked.
 
-| Code | Meaning | Rows |
-|---|---|---|
-| SPLIT | More than half of the ZCTA's 2024 registration comes from voting districts only partly inside it, so the share-out matters a lot | 57 |
-| LOW_N | Fewer than 500 registered voters or fewer than 1,000 adult citizens | 48 |
-| GROWTH | 2024 registration above 1.1 times the voting-age population | 20 |
-| CORRECTIONAL | Adults in correctional facilities are 5 to 10 percent of voting-age residents | 6 |
-| COLLEGE | College housing is 10 percent or more of residents | 5 |
-| EDGE | 90 to 98 percent of the ZCTA's people are in the region | 5 |
-| FACILITY_CHECK | The correctional count may be a detention facility; its type has not been checked | 1 |
+| Code | Meaning | Ranked rows | All rows |
+|---|---|---|---|
+| SPLIT | More than half of the ZCTA's 2024 registration comes from voting districts split between ZCTAs (10 to 90 percent inside it), so the share-out matters a lot | 24 | 57 |
+| LOW_N | Fewer than 500 registered voters or fewer than 1,000 adult citizens | 0 | 48 |
+| GROWTH | 2024 registration above 1.1 times the 2020 voting-age population | 9 | 20 |
+| CORRECTIONAL | Adults in correctional facilities are 5 to 10 percent of voting-age residents | 6 | 6 |
+| COLLEGE | College housing is 10 percent or more of residents | 3 | 5 |
+| EDGE | 90 to 98 percent of the ZCTA's people are in the region. Turnout counts only the part inside the region while `cvap` covers the whole ZCTA, so P1 reads low here | 5 | 5 |
+| FACILITY_CHECK | The correctional count may be a detention facility; its type has not been checked | 1 | 1 |
 
 ## People in jails and detention
 
@@ -157,7 +157,7 @@ Describe areas, not people. Do not call any area "disengaged", a "civic desert" 
 
 - Registered voters and ballots cast for both years match the Texas Legislative Council's county totals exactly after the share-out.
 - Rebuilding with a different weight (total population instead of voting-age population) gives almost the same ranking (Spearman correlation 0.998).
-- A rebuild from a clean copy produces identical CSV, GeoJSON and map files.
+- A rebuild from a clean copy of the saved source files produces identical ZCTA CSV, county CSV, GeoJSON and map files. The Excel file differs only in its saved-at timestamp.
 - The ACS context columns were recomputed independently and matched.
 - Tests check that no names, street addresses or individual records reach the outputs, that the use statement and required lines are present, and that not-ranked rows carry no rank.
 
@@ -176,10 +176,12 @@ Requires Python and [uv](https://docs.astral.sh/uv/).
 uv run python -m hfb.build data/raw
 ```
 
-This downloads every source file into `data/raw`, then writes `out/` and an internal QA report in `qa/`. To rebuild from files already downloaded, without network access:
+This downloads every source file into `data/raw`, then writes `out/` and an internal QA report in `qa/`. The download path is covered by tests with mocked downloads but has not yet been run end to end against the live sources: the 30 October build used saved copies of the same public files. If a download fails, please open an issue.
+
+To rebuild from a `data/raw` that a previous build already filled, without network access:
 
 ```bash
-uv run python -m hfb.build data/raw --seed path/to/saved/raw
+uv run python -m hfb.assemble data/raw
 ```
 
 Tests:
@@ -189,4 +191,4 @@ uv run pytest
 uv run pytest -m real   # needs data/raw
 ```
 
-A few real-data tests compare against reference results by ZCTA kept outside this repository. They skip when those files are absent.
+Five real-data tests compare against reference results by ZCTA kept outside this repository. They skip when those files are absent.

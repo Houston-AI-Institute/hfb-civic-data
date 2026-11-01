@@ -55,7 +55,8 @@ COLUMN_DEFS = {
     "ZCTA": "ZIP Code Tabulation Area (2020 Census geography), 5 characters, stored as text. "
             "One row per ZCTA that touches the 10-county region.",
     "county_main": "5-digit FIPS code (text) of the region county that holds most of the "
-                   "ZCTA's land.",
+                   "ZCTA's in-region land. A ZCTA mostly outside the region still gets "
+                   "a region county here.",
     "land_share": "Share of the ZCTA's land area inside the 10-county region (0 to 1).",
     "inreg_share20": "Estimated share of the ZCTA's 2020 population living inside the "
                      "10-county region (0 to 1). Blank where the ZCTA had no 2020 population.",

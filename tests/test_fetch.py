@@ -79,9 +79,8 @@ def test_copy_constants():
         "Not for decisions about food distribution, eligibility, pantry siting or any individual."
     )
     assert copy_mod.USE_LIMIT == (
-        "This table does not choose where to run voter registration or GOTV; "
-        "that is the food bank's decision with its counsel. "
-        "Until then it supports a listening shortlist only."
+        "This table is for choosing where to listen first. "
+        "It is not for planning voter registration or turnout drives."
     )
     assert copy_mod.REQUIRED_LINES == (
         "Missing data is not missing civic life.",

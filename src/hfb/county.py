@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import acs, context, crosswalk, turnout
+from . import acs, context, crosswalk, flags, turnout
 from .config import COUNTIES, COUNTY_NAMES
 from .paths import raw_path
 
@@ -94,9 +94,11 @@ COLUMN_DEFS = {
                     "not used in P1. A sampling estimate.",
     "broadband_hh_moe": "90 percent margin of error on broadband_hh, as a share (0 to 1).",
     "civic_orgs_main": "Sum of civic_orgs_n over the ZCTAs whose county_main is this county. "
+                       "ZCTAs with less than half their land in the region are left out. "
                        "The IRS file counts by mailing ZIP, and each ZCTA is assigned to the "
-                       "county holding most of its land, so this is not an exact count of "
-                       "organizations located in the county. Zero means none registered; "
+                       "region county holding most of its in-region land, so this is not an "
+                       "exact count of organizations located in the county. Zero means none "
+                       "registered; "
                        "registration is not a measure of civic life.",
 }
 
@@ -173,7 +175,9 @@ def build(vd_sums: dict, b05003: pd.DataFrame, ctx: pd.DataFrame, corr: pd.Serie
     x = ctx.reindex(fips)
     for col in context.CONTEXT_COLS:
         c[col] = x[col].to_numpy()
-    orgs = t.civic_orgs_n.groupby(t.county_main).sum().reindex(fips).fillna(0)
+    mostly_in = t.land_share >= flags.LAND_MIN  # skip ZCTAs mostly outside the region
+    orgs = t.civic_orgs_n[mostly_in].groupby(t.county_main[mostly_in]).sum()
+    orgs = orgs.reindex(fips).fillna(0)
     c["civic_orgs_main"] = orgs.to_numpy()
 
     c = c[COLUMNS].copy()
