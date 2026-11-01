@@ -1,6 +1,9 @@
 """User-facing copy strings, used verbatim everywhere they appear."""
 
-MISUSE = "Not for decisions about food distribution, eligibility, pantry siting or any individual."
+MISUSE = (
+    "Nonpartisan. Not for voter registration, turnout drives or campaigns. "
+    "Not for decisions about food distribution, eligibility, pantry siting or any individual."
+)
 
 USE_LIMIT = (
     "This table is for choosing where to listen first. "

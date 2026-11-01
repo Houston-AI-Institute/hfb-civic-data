@@ -1,6 +1,6 @@
 # ZCTA civic participation table
 
-**Not for decisions about food distribution, eligibility, pantry siting or any individual.**
+**Nonpartisan. Not for voter registration, turnout drives or campaigns. Not for decisions about food distribution, eligibility, pantry siting or any individual.**
 
 This table is for choosing where to listen first. It is not for planning voter registration or turnout drives.
 

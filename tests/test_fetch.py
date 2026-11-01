@@ -76,6 +76,7 @@ def test_source_config_complete():
 
 def test_copy_constants():
     assert copy_mod.MISUSE == (
+        "Nonpartisan. Not for voter registration, turnout drives or campaigns. "
         "Not for decisions about food distribution, eligibility, pantry siting or any individual."
     )
     assert copy_mod.USE_LIMIT == (
@@ -95,6 +96,7 @@ def test_copy_constants():
         "A reference measure, not a score of a community."
     )
     assert copy_mod.MAP_FOOTER == (
+        "Nonpartisan. Not for voter registration, turnout drives or campaigns. "
         "Not for decisions about food distribution, eligibility, pantry siting or any individual."
         " For team folders and the food bank. Not for slides, posts or public repos."
     )
