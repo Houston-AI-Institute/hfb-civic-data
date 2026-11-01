@@ -7,3 +7,8 @@ tests/golden/block_gq_*
 __pycache__/
 *.egg-info/
 .pytest_cache/
+# ZCTA-level reference results: kept locally, not published
+tests/golden/z.csv
+tests/golden/all10_log.txt
+tests/golden/compare_*
+tests/golden/vtd_zcta_weights_*

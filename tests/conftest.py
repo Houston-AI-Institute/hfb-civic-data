@@ -1,0 +1,59 @@
+import os
+from pathlib import Path
+
+import pytest
+
+GOLDEN = Path(__file__).parent / "golden"
+
+
+def need_golden(*names):
+    """Skip when local-only golden files are absent (they are not published)."""
+    missing = [n for n in names if not (GOLDEN / n).exists()]
+    if missing:
+        pytest.skip(f"golden reference files not present: {missing}")
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+@pytest.fixture(scope="session")
+def raw():
+    """Raw data directory (HFB_RAW, default data/raw); skipped without a manifest."""
+    path = Path(os.environ.get("HFB_RAW", ROOT / "data" / "raw"))
+    if not (path / "manifest.csv").exists():
+        pytest.skip(f"no manifest.csv in {path}; run `python -m hfb.fetch` first")
+    return path
+
+
+@pytest.fixture(scope="session")
+def table(raw):
+    """The built ZCTA table, cached per session."""
+    from hfb import pipeline  # Task 5; imported lazily so collection never fails
+
+    return pipeline.build_table(raw)
+
+
+@pytest.fixture(scope="session")
+def weights(blocks):
+    """VTD -> ZCTA weights from the real block table, built once per session."""
+    from hfb import crosswalk
+
+    return crosswalk.vtd_weights(blocks)
+
+
+@pytest.fixture(scope="session")
+def blocks(raw):
+    """2020 block table for the region, built once per session."""
+    from hfb import crosswalk
+
+    return crosswalk.build_blocks(raw, write=False)
+
+
+@pytest.fixture(scope="session")
+def real_outputs(raw, tmp_path_factory):
+    """Full assemble build into a temp dir: (out_dir, qa_dir, overall_ok). Never touches out/."""
+    from hfb import assemble
+
+    base = tmp_path_factory.mktemp("assemble_real")
+    out, qa = base / "out", base / "qa"
+    ok = assemble.main(raw, out_dir=out, qa_dir=qa)
+    return out, qa, ok
