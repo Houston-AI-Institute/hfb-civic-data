@@ -8,6 +8,8 @@ import pytest
 from hfb import crosswalk
 from hfb.config import COUNTIES
 
+from conftest import need_golden
+
 GOLDEN = Path(__file__).parent / "golden"
 TAG = "_".join(COUNTIES)
 
@@ -119,6 +121,7 @@ def built(raw):
 
 @pytest.mark.real
 def test_blocks_match_golden(built, raw):
+    need_golden(f"blocks_{TAG}.csv", f"block_gq_{TAG}.csv")
     blocks, secs = built
     g = pd.read_csv(GOLDEN / f"blocks_{TAG}.csv", dtype={"GEOID20": str, "ZCTA": str})
     gq = pd.read_csv(GOLDEN / f"block_gq_{TAG}.csv", dtype={"GEOID20": str})
@@ -150,6 +153,7 @@ def region_vtdkeys(raw):
 
 @pytest.mark.real
 def test_weights_match_golden_z(built, raw, region_vtdkeys):
+    need_golden(f"blocks_{TAG}.csv", f"block_gq_{TAG}.csv")
     blocks, _ = built
     w = crosswalk.vtd_weights(blocks)
     assert len(region_vtdkeys) == 1561

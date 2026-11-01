@@ -3,6 +3,15 @@ from pathlib import Path
 
 import pytest
 
+GOLDEN = Path(__file__).parent / "golden"
+
+
+def need_golden(*names):
+    """Skip when local-only golden files are absent (they are not published)."""
+    missing = [n for n in names if not (GOLDEN / n).exists()]
+    if missing:
+        pytest.skip(f"golden reference files not present: {missing}")
+
 ROOT = Path(__file__).resolve().parent.parent
 
 

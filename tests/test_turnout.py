@@ -6,6 +6,8 @@ import pytest
 from hfb import turnout
 from hfb.config import COUNTIES
 
+from conftest import need_golden
+
 GOLDEN = Path(__file__).parent / "golden"
 TARGETS = {
     24: (3_740_459, 2_239_980),
@@ -194,6 +196,7 @@ def test_real_split_exposure_valid(weights, vds):
 @pytest.mark.real
 @pytest.mark.parametrize("yy", [22, 24])
 def test_allocation_matches_golden_z(allocs, yy):
+    need_golden("z.csv")
     z = pd.read_csv(GOLDEN / "z.csv", dtype={"ZCTA": str}, usecols=["ZCTA", f"reg{yy}", f"to{yy}"])
     z = z.set_index("ZCTA")
     a = allocs[yy]

@@ -21,7 +21,7 @@ A low score is not low interest.
 | Intended use | Planning where to listen first: focus groups and outreach conversations. |
 | Not intended for | Food distribution, eligibility, pantry siting, decisions about any person, or choosing where to run voter registration or GOTV. |
 | Built | 30 October 2026, from public files downloaded that day. |
-| License | Texas Legislative Council data under CC BY; Census and IRS data are U.S. government works. See "Credits". |
+| License | Code: MIT (see `LICENSE`). Tables built by this code: CC BY 4.0, crediting the Texas Legislative Council as in "Credits". Census and IRS inputs are U.S. government works. |
 
 ## Files
 
@@ -34,6 +34,8 @@ A low score is not low interest.
 | `zcta_p1_map.png` | P1 in five equal-count classes over ranked ZCTAs; not-ranked ZCTAs in grey; county outlines. For the food bank's hand-off only; use county views in recorded talks. |
 
 Column definitions live in the `read_me` sheet. This file explains how the table was built and where it is weak.
+
+The built files are not stored in this repository. They go to the food bank and to hackathon teams with the use statement above. Anyone can rebuild them from the public sources (see "Rebuilding").
 
 ## How P1 is built
 
@@ -184,4 +186,7 @@ Tests:
 
 ```bash
 uv run pytest
+uv run pytest -m real   # needs data/raw
 ```
+
+A few real-data tests compare against reference results by ZCTA kept outside this repository. They skip when those files are absent.
