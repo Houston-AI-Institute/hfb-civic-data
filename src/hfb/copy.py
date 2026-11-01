@@ -20,7 +20,13 @@ P1_FOOTNOTE = (
     "A reference measure, not a score of a community."
 )
 
-MAP_FOOTER = MISUSE + " For the food bank's hand-off only; use county views in recorded talks."
+MAP_FOOTER = MISUSE + " For team folders and the food bank. Not for slides, posts or public repos."
+
+CONDITIONS_NOTE = (
+    "Keep the five neighbourhood conditions out of any score. They track schooling and "
+    "language closely, so a score built on them would describe who lives in an area, not "
+    "how it takes part. Use them only to explain a place."
+)
 
 CREDITS = (
     "Texas Legislative Council, Capitol Data Portal "
